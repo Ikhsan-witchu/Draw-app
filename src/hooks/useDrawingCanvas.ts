@@ -6,39 +6,55 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-export type ToolId = "brush" | "eraser";
-
 export interface StrokePoint {
   x: number;
   y: number;
   pressure: number;
 }
 
-const CANVAS_WIDTH = 900;
-const CANVAS_HEIGHT = 560;
+interface UseDrawingCanvasOptions {
+  tool: string;
+  color: string;
+}
+
 const MAX_HISTORY = 25;
 
-export function useDrawingCanvas() {
+export function useDrawingCanvas({ tool, color }: UseDrawingCanvasOptions) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const isDrawing = useRef<boolean>(false);
+  const isDrawing = useRef(false);
   const lastPoint = useRef<StrokePoint | null>(null);
   const history = useRef<ImageData[]>([]);
+  const sizeRef = useRef({ width: 0, height: 0 });
 
-  const [tool, setTool] = useState<ToolId>("brush");
-  const [color, setColor] = useState<string>("#111827");
-  const [size, setSize] = useState<number>(6);
-  const [canUndo, setCanUndo] = useState<boolean>(false);
+  const [canUndo, setCanUndo] = useState(false);
 
-  useEffect(() => {
+  const resizeCanvas = useCallback((cssWidth: number, cssHeight: number) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || cssWidth <= 0 || cssHeight <= 0) return;
 
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_WIDTH * dpr;
-    canvas.height = CANVAS_HEIGHT * dpr;
-    canvas.style.width = `${CANVAS_WIDTH}px`;
-    canvas.style.height = `${CANVAS_HEIGHT}px`;
+    const prevCtx = ctxRef.current;
+    const prevWidth = canvas.width;
+    const prevHeight = canvas.height;
+
+    // Simpan isi kanvas lama sebelum resize (mengubah width/height akan menghapus isinya)
+    let snapshot: HTMLCanvasElement | null = null;
+    if (prevCtx && prevWidth > 0 && prevHeight > 0) {
+      snapshot = document.createElement("canvas");
+      snapshot.width = prevWidth;
+      snapshot.height = prevHeight;
+      snapshot.getContext("2d")?.drawImage(canvas, 0, 0);
+    }
+
+    const prevCssWidth = sizeRef.current.width;
+    const prevCssHeight = sizeRef.current.height;
+
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -46,14 +62,36 @@ export function useDrawingCanvas() {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+    if (snapshot) {
+      ctx.drawImage(snapshot, 0, 0, snapshot.width, snapshot.height, 0, 0, prevCssWidth, prevCssHeight);
+    }
+
     ctxRef.current = ctx;
+    sizeRef.current = { width: cssWidth, height: cssHeight };
+    // Riwayat undo jadi tidak valid lagi setelah resize (ukuran ImageData lama sudah beda)
+    history.current = [];
+    setCanUndo(false);
   }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      resizeCanvas(width, height);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [resizeCanvas]);
 
   const pushHistory = useCallback(() => {
     const ctx = ctxRef.current;
-    if (!ctx) return;
-    history.current.push(ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT));
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+    history.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
     if (history.current.length > MAX_HISTORY) history.current.shift();
     setCanUndo(true);
   }, []);
@@ -67,7 +105,10 @@ export function useDrawingCanvas() {
     };
   };
 
+  const isDrawable = tool === "brush" || tool === "eraser";
+
   const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawable) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     pushHistory();
     isDrawing.current = true;
@@ -75,7 +116,7 @@ export function useDrawingCanvas() {
   };
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing.current) return;
+    if (!isDrawable || !isDrawing.current) return;
     const ctx = ctxRef.current;
     const last = lastPoint.current;
     if (!ctx || !last) return;
@@ -83,7 +124,7 @@ export function useDrawingCanvas() {
     const point = pointFromEvent(e);
     ctx.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
     ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1, size * (0.4 + point.pressure));
+    ctx.lineWidth = Math.max(1, 6 * (0.4 + point.pressure));
     ctx.beginPath();
     ctx.moveTo(last.x, last.y);
     ctx.lineTo(point.x, point.y);
@@ -105,37 +146,13 @@ export function useDrawingCanvas() {
     setCanUndo(history.current.length > 0);
   };
 
-  const handleClear = () => {
-    pushHistory();
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  };
-
-  const handleExport = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const link = document.createElement("a");
-    link.download = "drawing.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  };
-
   return {
+    containerRef,
     canvasRef,
-    tool,
-    setTool,
-    color,
-    setColor,
-    size,
-    setSize,
     canUndo,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
     handleUndo,
-    handleClear,
-    handleExport,
   };
 }

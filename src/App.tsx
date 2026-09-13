@@ -1,16 +1,7 @@
-import DrawingCanvas from "./components/Canvas/DrawingCanvas";
-import DrawingWorkspacePanels from "./components/Tools/Drawing workspace panels";
+import DrawingWorkspace from "./components/Workspace/DrawingWorkspace";
 
 function App() {
-  return (
-    <div className="app">
-      <DrawingWorkspacePanels />
-
-      <main className="canvas-area">
-        <DrawingCanvas />
-      </main>
-    </div>
-  );
+  return <DrawingWorkspace />;
 }
 
 export default App;
