@@ -12,7 +12,24 @@ import { LayersPanel } from "./LayersPanel";
 import { PanelShell } from "./PanelShell";
 import { Sidebar } from "./Sidebar";
 import { TOOLS, PENCILS } from "./toolsData";
+import { widthForColumns } from "./layoutConstants";
 import type { DockZone, DropPosition, PanelId } from "./types";
+
+// Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
+const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
+  tools: widthForColumns(1), // sidebar isi tools: cukup 1 item per baris
+  pencils: widthForColumns(3), // sidebar isi pencils: cukup 3 item per baris
+  hue: 240,
+  layers: 220,
+};
+
+function computeSidebarWidth(panelIds: PanelId[]): number {
+  const widths = panelIds.map((id) => PANEL_PREFERRED_WIDTH[id] ?? 200);
+  return widths.length > 0 ? Math.max(...widths) : 200;
+}
+
+const INITIAL_LEFT_PANELS: PanelId[] = ["tools"];
+const INITIAL_RIGHT_PANELS: PanelId[] = ["hue", "pencils"];
 
 interface DrawingWorkspaceProps {
   documentWidth: number;
@@ -20,12 +37,12 @@ interface DrawingWorkspaceProps {
 }
 
 export default function DrawingWorkspace({ documentWidth, documentHeight }: DrawingWorkspaceProps) {
-  const [leftWidth, setLeftWidth] = useState(220);
-  const [rightWidth, setRightWidth] = useState(240);
+  const [leftWidth, setLeftWidth] = useState(() => computeSidebarWidth(INITIAL_LEFT_PANELS));
+  const [rightWidth, setRightWidth] = useState(() => computeSidebarWidth(INITIAL_RIGHT_PANELS));
   const [bottomHeight, setBottomHeight] = useState(200);
 
-  const [leftPanels, setLeftPanels] = useState<PanelId[]>(["tools"]);
-  const [rightPanels, setRightPanels] = useState<PanelId[]>(["hue", "pencils"]);
+  const [leftPanels, setLeftPanels] = useState<PanelId[]>(INITIAL_LEFT_PANELS);
+  const [rightPanels, setRightPanels] = useState<PanelId[]>(INITIAL_RIGHT_PANELS);
   const [bottomPanels, setBottomPanels] = useState<PanelId[]>(["layers"]);
 
   const [dragPanel, setDragPanel] = useState<PanelId | null>(null);
@@ -61,10 +78,10 @@ export default function DrawingWorkspace({ documentWidth, documentHeight }: Draw
 
     if (zone === "left") {
       const delta = e.clientX - startPos.current;
-      setLeftWidth(Math.min(360, Math.max(72, startSize.current + delta)));
+      setLeftWidth(Math.min(400, Math.max(64, startSize.current + delta)));
     } else if (zone === "right") {
       const delta = e.clientX - startPos.current;
-      setRightWidth(Math.min(360, Math.max(72, startSize.current - delta)));
+      setRightWidth(Math.min(400, Math.max(64, startSize.current - delta)));
     } else {
       const delta = e.clientY - startPos.current;
       setBottomHeight(Math.min(500, Math.max(80, startSize.current - delta)));
