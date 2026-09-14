@@ -1,40 +1,50 @@
 import type { DragEvent, ReactNode } from "react";
-import type { DropPosition, PanelId, SidebarSide } from "./types";
+import type { DockZone, DropPosition, PanelId } from "./types";
 
 interface SidebarProps {
-  side: SidebarSide;
-  width: number;
+  zone: DockZone;
+  orientation: "vertical" | "horizontal";
+  size: number; // width (px) untuk vertical, height (px) untuk horizontal
   panelIds: PanelId[];
   renderPanel: (id: PanelId) => ReactNode;
-  onDropPanel: (side: SidebarSide, panelId: PanelId, position: DropPosition) => void;
+  onDropPanel: (zone: DockZone, panelId: PanelId, position: DropPosition) => void;
   isDragOver: boolean;
-  setDragOverSide: (side: SidebarSide | null) => void;
+  setDragOverZone: (zone: DockZone | null) => void;
 }
 
 export function Sidebar({
-  side,
-  width,
+  zone,
+  orientation,
+  size,
   panelIds,
   renderPanel,
   onDropPanel,
   isDragOver,
-  setDragOverSide,
+  setDragOverZone,
 }: SidebarProps) {
+  const isVertical = orientation === "vertical";
+
   return (
     <div
-      className="relative flex flex-col bg-neutral-900 shrink-0"
-      style={{ width }}
+      className={`relative flex bg-neutral-900 shrink-0 ${isVertical ? "flex-col" : "flex-row"}`}
+      style={isVertical ? { width: size } : { height: size }}
       onDragOver={(e) => {
         e.preventDefault();
-        setDragOverSide(side);
+        setDragOverZone(zone);
       }}
-      onDragLeave={() => setDragOverSide(null)}
+      onDragLeave={() => setDragOverZone(null)}
       onDrop={(e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         const panelId = e.dataTransfer.getData("text/plain") as PanelId;
         const rect = e.currentTarget.getBoundingClientRect();
-        const position: DropPosition = e.clientY - rect.top < rect.height / 2 ? "start" : "end";
-        onDropPanel(side, panelId, position);
+        const position: DropPosition = isVertical
+          ? e.clientY - rect.top < rect.height / 2
+            ? "start"
+            : "end"
+          : e.clientX - rect.left < rect.width / 2
+            ? "start"
+            : "end";
+        onDropPanel(zone, panelId, position);
       }}
     >
       {isDragOver && (
@@ -49,7 +59,14 @@ export function Sidebar({
         </div>
       )}
       {panelIds.map((id) => (
-        <div key={id} className="flex-1 min-h-0 border-t border-neutral-800 first:border-t-0">
+        <div
+          key={id}
+          className={`flex-1 min-h-0 min-w-0 ${
+            isVertical
+              ? "border-t border-neutral-800 first:border-t-0"
+              : "border-l border-neutral-800 first:border-l-0"
+          }`}
+        >
           {renderPanel(id)}
         </div>
       ))}
