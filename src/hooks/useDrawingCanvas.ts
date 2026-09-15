@@ -4,6 +4,7 @@ import {
   useEffect,
   useLayoutEffect,
   type PointerEvent as ReactPointerEvent,
+  type DragEvent as ReactDragEvent,
 } from "react";
 
 export interface StrokePoint {
@@ -24,6 +25,7 @@ interface UseDrawingCanvasOptions {
   documentWidth: number;
   documentHeight: number;
   onColorPick?: (hsl: { hue: number; sat: number; val: number }) => void;
+  initialImage?: HTMLImageElement;
 }
 
 interface ZoomAnchor {
@@ -91,8 +93,6 @@ function colorsMatch(
   );
 }
 
-// Scanline flood fill — mengisi span horizontal sekaligus, jauh lebih hemat
-// daripada flood fill piksel-per-piksel untuk kanvas beresolusi besar.
 function floodFill(
   imageData: ImageData,
   startX: number,
@@ -111,7 +111,8 @@ function floodFill(
     return;
   }
 
-  const matches = (idx: number) => colorsMatch(data[idx], data[idx + 1], data[idx + 2], data[idx + 3], startR, startG, startB, startA, tolerance);
+  const matches = (idx: number) =>
+    colorsMatch(data[idx], data[idx + 1], data[idx + 2], data[idx + 3], startR, startG, startB, startA, tolerance);
 
   const visited = new Uint8Array(width * height);
   const stack: number[] = [startY * width + startX];
@@ -126,7 +127,8 @@ function floodFill(
     let xLeft = x;
     while (xLeft > 0 && !visited[y * width + (xLeft - 1)] && matches((y * width + (xLeft - 1)) * 4)) xLeft--;
     let xRight = x;
-    while (xRight < width - 1 && !visited[y * width + (xRight + 1)] && matches((y * width + (xRight + 1)) * 4)) xRight++;
+    while (xRight < width - 1 && !visited[y * width + (xRight + 1)] && matches((y * width + (xRight + 1)) * 4))
+      xRight++;
 
     for (let xi = xLeft; xi <= xRight; xi++) {
       const p = y * width + xi;
@@ -147,9 +149,39 @@ function floodFill(
   }
 }
 
-export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, onColorPick }: UseDrawingCanvasOptions) {
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      resolve(img);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+export function useDrawingCanvas({
+  tool,
+  color,
+  documentWidth,
+  documentHeight,
+  onColorPick,
+  initialImage,
+}: UseDrawingCanvasOptions) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null); // kanvas komposit (yang tampil di layar)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
@@ -187,7 +219,7 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
     return canvas;
   }
 
-  // Dokumen baru: siapkan kanvas komposit + satu layer pertama, reset semua state layer
+  // Dokumen baru: siapkan kanvas komposit + layer pertama (diisi initialImage kalau ada)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -202,7 +234,12 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
 
     layerCounterRef.current = 1;
     const id = `layer-${Date.now()}`;
-    layerCanvasesRef.current = new Map([[id, createLayerCanvas()]]);
+    const firstLayer = createLayerCanvas();
+    if (initialImage) {
+      const layerCtx = firstLayer.getContext("2d");
+      layerCtx?.drawImage(initialImage, 0, 0, documentWidth, documentHeight);
+    }
+    layerCanvasesRef.current = new Map([[id, firstLayer]]);
     historyRef.current = new Map();
     setLayers([{ id, name: "Layer 1", visible: true }]);
     setActiveLayerId(id);
@@ -223,7 +260,6 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, documentWidth, documentHeight);
 
-    // index 0 = paling atas, jadi digambar dari belakang (bawah) ke depan (atas)
     for (let i = layers.length - 1; i >= 0; i--) {
       const layer = layers[i];
       if (!layer.visible) continue;
@@ -281,6 +317,28 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
       next.splice(insertIndex, 0, dragged);
       return next;
     });
+  }
+
+  // Gambar yang diimpor (drop/paste) selalu jadi LAYER BARU di atas, bukan nimpa layer aktif
+  function importImageAsLayer(image: HTMLImageElement, dropX?: number, dropY?: number) {
+    layerCounterRef.current += 1;
+    const id = `layer-${Date.now()}-${layerCounterRef.current}`;
+    const layerCanvas = createLayerCanvas();
+    const ctx = layerCanvas.getContext("2d");
+    if (ctx) {
+      const w = image.naturalWidth || image.width;
+      const h = image.naturalHeight || image.height;
+      const x = dropX !== undefined ? dropX - w / 2 : (documentWidth - w) / 2;
+      const y = dropY !== undefined ? dropY - h / 2 : (documentHeight - h) / 2;
+      try {
+        ctx.drawImage(image, x, y, w, h);
+      } catch {
+        // Gambar lintas-origin tanpa izin CORS dari server sumbernya bisa gagal digambar; diamkan saja.
+      }
+    }
+    layerCanvasesRef.current.set(id, layerCanvas);
+    setLayers((prev) => [{ id, name: `Image ${layerCounterRef.current}`, visible: true }, ...prev]);
+    setActiveLayerId(id);
   }
 
   // --- Zoom (scroll wheel, ke arah kursor) + pan (middle-click drag) ---
@@ -346,15 +404,21 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
     window.removeEventListener("pointerup", handlePanEnd);
   }
 
-  // --- Menggambar (selalu ke layer yang aktif, lalu re-komposit) ---
+  // --- Konversi koordinat layar -> koordinat dokumen ---
+
+  function docPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left) / zoomRef.current,
+      y: (clientY - rect.top) / zoomRef.current,
+    };
+  }
 
   const pointFromEvent = (e: ReactPointerEvent<HTMLCanvasElement>): StrokePoint => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) / zoomRef.current,
-      y: (e.clientY - rect.top) / zoomRef.current,
-      pressure: e.pressure > 0 ? e.pressure : 0.5,
-    };
+    const { x, y } = docPointFromClient(e.clientX, e.clientY);
+    return { x, y, pressure: e.pressure > 0 ? e.pressure : 0.5 };
   };
 
   const isDrawable = tool === "brush" || tool === "eraser";
@@ -479,13 +543,19 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
     }
   }
 
-  // Ctrl+Z / Cmd+Z untuk undo (di layer yang lagi aktif)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z";
       if (isUndo) {
         e.preventDefault();
         handleUndo();
+        return;
+      }
+
+      const isSave = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s";
+      if (isSave) {
+        e.preventDefault();
+        exportImage();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -493,12 +563,74 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLayerId]);
 
+  // --- Impor gambar: drag file dari luar / drag dari browser, dan paste ---
+
+  function handleDrop(e: ReactDragEvent<HTMLCanvasElement>) {
+    e.preventDefault();
+    if (!e.dataTransfer) return;
+    const point = docPointFromClient(e.clientX, e.clientY);
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const imageFile = Array.from(files).find((f) => f.type.startsWith("image/"));
+      if (imageFile) {
+        loadImageFromFile(imageFile).then((img) => importImageAsLayer(img, point.x, point.y));
+      }
+      return;
+    }
+
+    // Drag gambar dari halaman web lain biasanya bawa URL, bukan file
+    const uri = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+    if (uri && /^https?:\/\//.test(uri)) {
+      loadImageFromUrl(uri)
+        .then((img) => importImageAsLayer(img, point.x, point.y))
+        .catch(() => {
+          // Kemungkinan besar dibatasi CORS oleh server sumber gambar — gagal secara diam-diam
+        });
+    }
+  }
+
+  function handleDragOver(e: ReactDragEvent<HTMLCanvasElement>) {
+    e.preventDefault();
+  }
+
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            loadImageFromFile(file).then((img) => importImageAsLayer(img));
+          }
+          e.preventDefault();
+          break;
+        }
+      }
+    }
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function exportImage() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.download = "drawing.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
   return {
     viewportRef,
     canvasRef,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
+    handleDrop,
+    handleDragOver,
     layers,
     activeLayerId,
     addLayer,
@@ -506,5 +638,6 @@ export function useDrawingCanvas({ tool, color, documentWidth, documentHeight, o
     toggleLayerVisibility,
     selectLayer,
     reorderLayer,
+    exportImage,
   };
 }

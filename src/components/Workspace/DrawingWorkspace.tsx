@@ -7,6 +7,7 @@ import {
 import DrawingCanvas from "../Canvas/DrawingCanvas";
 import { useDrawingCanvas } from "../../hooks/useDrawingCanvas";
 import { IconGridPanel } from "./IconGridPanel";
+import { MenuBar, type MenuDef } from "./MenuBar";
 import { HuePanel } from "./HuePanel";
 import { LayersPanel } from "./LayersPanel";
 import { PanelShell } from "./PanelShell";
@@ -34,9 +35,16 @@ const INITIAL_RIGHT_PANELS: PanelId[] = ["hue", "pencils"];
 interface DrawingWorkspaceProps {
   documentWidth: number;
   documentHeight: number;
+  initialImage?: HTMLImageElement;
+  onClose: () => void;
 }
 
-export default function DrawingWorkspace({ documentWidth, documentHeight }: DrawingWorkspaceProps) {
+export default function DrawingWorkspace({
+  documentWidth,
+  documentHeight,
+  initialImage,
+  onClose,
+}: DrawingWorkspaceProps) {
   const [leftWidth, setLeftWidth] = useState(() => computeSidebarWidth(INITIAL_LEFT_PANELS));
   const [rightWidth, setRightWidth] = useState(() => computeSidebarWidth(INITIAL_RIGHT_PANELS));
   const [bottomHeight, setBottomHeight] = useState(200);
@@ -47,6 +55,12 @@ export default function DrawingWorkspace({ documentWidth, documentHeight }: Draw
 
   const [dragPanel, setDragPanel] = useState<PanelId | null>(null);
   const [dragOverZone, setDragOverZone] = useState<DockZone | null>(null);
+
+  // Visual-only dulu — checkbox menu Workspace belum benar-benar nutup/buka panel
+  const [showToolsChecked, setShowToolsChecked] = useState(true);
+  const [showPencilsChecked, setShowPencilsChecked] = useState(true);
+  const [showHueChecked, setShowHueChecked] = useState(true);
+  const [showLayersChecked, setShowLayersChecked] = useState(true);
 
   // State fungsional: tool aktif, warna (hue/sat/val)
   const [activeTool, setActiveTool] = useState<string>(TOOLS[0]?.id ?? "brush");
@@ -61,6 +75,7 @@ export default function DrawingWorkspace({ documentWidth, documentHeight }: Draw
     color,
     documentWidth,
     documentHeight,
+    initialImage,
     onColorPick: (next) => {
       setHue(next.hue);
       setSat(next.sat);
@@ -185,10 +200,42 @@ export default function DrawingWorkspace({ documentWidth, documentHeight }: Draw
     return null;
   }
 
+  const fileMenu: MenuDef = {
+    label: "File",
+    items: [
+      { type: "action", label: "New", onClick: () => {} },
+      { type: "action", label: "Open", onClick: () => {} },
+      { type: "action", label: "Save", shortcut: "Ctrl+S", onClick: () => drawing.exportImage() },
+      { type: "action", label: "Close", onClick: () => {} },
+    ],
+  };
+
+  const workspaceMenu: MenuDef = {
+    label: "Workspace",
+    items: [
+      { type: "checkbox", label: "Tools", checked: showToolsChecked, onToggle: () => setShowToolsChecked((v) => !v) },
+      {
+        type: "checkbox",
+        label: "Pencils",
+        checked: showPencilsChecked,
+        onToggle: () => setShowPencilsChecked((v) => !v),
+      },
+      { type: "checkbox", label: "Hue", checked: showHueChecked, onToggle: () => setShowHueChecked((v) => !v) },
+      {
+        type: "checkbox",
+        label: "Layers",
+        checked: showLayersChecked,
+        onToggle: () => setShowLayersChecked((v) => !v),
+      },
+    ],
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
-      {/* Top bar — sengaja dikosongkan dulu, isinya belum ditentukan */}
-      <div className="h-12 shrink-0 bg-neutral-900 border-b border-neutral-800" />
+      {/* Top bar */}
+      <div className="h-12 shrink-0 bg-neutral-900 border-b border-neutral-800">
+        <MenuBar menus={[fileMenu, workspaceMenu]} />
+      </div>
 
       <div className="flex flex-1 min-h-0">
         <Sidebar
@@ -215,6 +262,9 @@ export default function DrawingWorkspace({ documentWidth, documentHeight }: Draw
               onPointerDown={drawing.handlePointerDown}
               onPointerMove={drawing.handlePointerMove}
               onPointerUp={drawing.handlePointerUp}
+              onDrop={drawing.handleDrop}
+              onDragOver={drawing.handleDragOver}
+              onClose={onClose}
             />
           </div>
 
@@ -251,4 +301,4 @@ export default function DrawingWorkspace({ documentWidth, documentHeight }: Draw
       </div>
     </div>
   );
-}
+} 
