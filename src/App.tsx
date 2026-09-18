@@ -2,15 +2,20 @@ import { useEffect, useState } from "react";
 import DrawingWorkspace from "./components/Workspace/DrawingWorkspace";
 import StartScreen from "./components/Start/StartScreen";
 import type { DocumentSize } from "./components/Start/NewImageDialog";
+import type { DocumentTab } from "./hooks/useDrawingCanvas";
 
-interface OpenedDocument {
-  width: number;
-  height: number;
-  initialImage?: HTMLImageElement;
+// Cari nomor terkecil yang belum dipakai di antara judul tab yang ADA sekarang
+function nextAvailableTitle(existingTitles: string[]): string {
+  let n = 1;
+  while (existingTitles.includes(`Untitled ${n}`)) {
+    n++;
+  }
+  return `Untitled ${n}`;
 }
 
 function App() {
-  const [doc, setDoc] = useState<OpenedDocument | null>(null);
+  const [tabs, setTabs] = useState<DocumentTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
   // Cegah Ctrl+scroll / pinch-zoom browser nge-zoom seluruh halaman.
   useEffect(() => {
@@ -23,30 +28,53 @@ function App() {
     return () => window.removeEventListener("wheel", preventPageZoom);
   }, []);
 
+  function addTab(size: DocumentSize, initialImage?: HTMLImageElement, title?: string) {
+    const id = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const newTab: DocumentTab = {
+      id,
+      title: title ?? nextAvailableTitle(tabs.map((t) => t.title)),
+      width: size.width,
+      height: size.height,
+      initialImage,
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(id);
+  }
+
   function handleCreateNew(size: DocumentSize) {
-    setDoc({ width: size.width, height: size.height });
+    addTab(size);
   }
 
   function handleOpenImage(file: File) {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
-      setDoc({ width: img.naturalWidth, height: img.naturalHeight, initialImage: img });
+      addTab({ width: img.naturalWidth, height: img.naturalHeight }, img, file.name);
       URL.revokeObjectURL(url);
     };
     img.src = url;
   }
 
-  if (!doc) {
+  function closeTab(id: string) {
+    const remaining = tabs.filter((t) => t.id !== id);
+    setTabs(remaining);
+    if (activeTabId === id) {
+      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : null);
+    }
+  }
+
+  if (tabs.length === 0) {
     return <StartScreen onCreateNew={handleCreateNew} onOpenImage={handleOpenImage} />;
   }
 
   return (
     <DrawingWorkspace
-      documentWidth={doc.width}
-      documentHeight={doc.height}
-      initialImage={doc.initialImage}
-      onClose={() => setDoc(null)}
+      tabs={tabs}
+      activeTabId={activeTabId}
+      onSelectTab={setActiveTabId}
+      onCloseTab={closeTab}
+      onNewTab={handleCreateNew}
+      onOpenTabFile={handleOpenImage}
     />
   );
 }

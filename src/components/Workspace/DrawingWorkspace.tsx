@@ -1,11 +1,12 @@
 import {
   useRef,
   useState,
+  type ChangeEvent,
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import DrawingCanvas from "../Canvas/DrawingCanvas";
-import { useDrawingCanvas } from "../../hooks/useDrawingCanvas";
+import { useDrawingCanvas, type DocumentTab } from "../../hooks/useDrawingCanvas";
 import { IconGridPanel } from "./IconGridPanel";
 import { MenuBar, type MenuDef } from "./MenuBar";
 import { HuePanel } from "./HuePanel";
@@ -15,6 +16,7 @@ import { Sidebar } from "./Sidebar";
 import { TOOLS, PENCILS } from "./toolsData";
 import { widthForColumns } from "./layoutConstants";
 import type { DockZone, DropPosition, PanelId } from "./types";
+import NewImageDialog, { type DocumentSize } from "../Start/NewImageDialog";
 
 // Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
 const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
@@ -33,17 +35,21 @@ const INITIAL_LEFT_PANELS: PanelId[] = ["tools"];
 const INITIAL_RIGHT_PANELS: PanelId[] = ["hue", "pencils"];
 
 interface DrawingWorkspaceProps {
-  documentWidth: number;
-  documentHeight: number;
-  initialImage?: HTMLImageElement;
-  onClose: () => void;
+  tabs: DocumentTab[];
+  activeTabId: string | null;
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
+  onNewTab: (size: DocumentSize) => void;
+  onOpenTabFile: (file: File) => void;
 }
 
 export default function DrawingWorkspace({
-  documentWidth,
-  documentHeight,
-  initialImage,
-  onClose,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onNewTab,
+  onOpenTabFile,
 }: DrawingWorkspaceProps) {
   const [leftWidth, setLeftWidth] = useState(() => computeSidebarWidth(INITIAL_LEFT_PANELS));
   const [rightWidth, setRightWidth] = useState(() => computeSidebarWidth(INITIAL_RIGHT_PANELS));
@@ -56,11 +62,13 @@ export default function DrawingWorkspace({
   const [dragPanel, setDragPanel] = useState<PanelId | null>(null);
   const [dragOverZone, setDragOverZone] = useState<DockZone | null>(null);
 
-  // Visual-only dulu — checkbox menu Workspace belum benar-benar nutup/buka panel
-  const [showToolsChecked, setShowToolsChecked] = useState(true);
-  const [showPencilsChecked, setShowPencilsChecked] = useState(true);
-  const [showHueChecked, setShowHueChecked] = useState(true);
-  const [showLayersChecked, setShowLayersChecked] = useState(true);
+  // Ingat zona terakhir tiap panel, supaya waktu di-centang lagi dia balik ke tempat semula
+  const lastZoneRef = useRef<Partial<Record<PanelId, DockZone>>>({
+    tools: "left",
+    pencils: "right",
+    hue: "right",
+    layers: "bottom",
+  });
 
   // State fungsional: tool aktif, warna (hue/sat/val)
   const [activeTool, setActiveTool] = useState<string>(TOOLS[0]?.id ?? "brush");
@@ -73,15 +81,23 @@ export default function DrawingWorkspace({
   const drawing = useDrawingCanvas({
     tool: activeTool,
     color,
-    documentWidth,
-    documentHeight,
-    initialImage,
+    tabs,
+    activeTabId,
     onColorPick: (next) => {
       setHue(next.hue);
       setSat(next.sat);
       setVal(next.val);
     },
   });
+
+  const [showNewDialog, setShowNewDialog] = useState(false);
+  const openFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  function handleOpenFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) onOpenTabFile(file);
+    e.target.value = "";
+  }
 
   const resizingZone = useRef<DockZone | null>(null);
   const startPos = useRef(0);
@@ -139,6 +155,33 @@ export default function DrawingWorkspace({
     setBottomPanels(nextBottom);
     setDragOverZone(null);
     setDragPanel(null);
+    lastZoneRef.current[panelId] = zone;
+  }
+
+  function isPanelVisible(id: PanelId): boolean {
+    return leftPanels.includes(id) || rightPanels.includes(id) || bottomPanels.includes(id);
+  }
+
+  function togglePanelVisibility(id: PanelId) {
+    if (isPanelVisible(id)) {
+      // Sembunyikan: hapus dari zona manapun dia berada sekarang, ingat zona itu
+      if (leftPanels.includes(id)) {
+        lastZoneRef.current[id] = "left";
+        setLeftPanels((prev) => prev.filter((p) => p !== id));
+      } else if (rightPanels.includes(id)) {
+        lastZoneRef.current[id] = "right";
+        setRightPanels((prev) => prev.filter((p) => p !== id));
+      } else if (bottomPanels.includes(id)) {
+        lastZoneRef.current[id] = "bottom";
+        setBottomPanels((prev) => prev.filter((p) => p !== id));
+      }
+    } else {
+      // Tampilkan lagi: taruh di zona terakhir dia berada
+      const zone = lastZoneRef.current[id] ?? "right";
+      if (zone === "left") setLeftPanels((prev) => [id, ...prev]);
+      else if (zone === "right") setRightPanels((prev) => [id, ...prev]);
+      else setBottomPanels((prev) => [id, ...prev]);
+    }
   }
 
   function renderPanel(id: PanelId) {
@@ -191,6 +234,7 @@ export default function DrawingWorkspace({
             onAdd={drawing.addLayer}
             onDelete={drawing.deleteLayer}
             onToggleVisible={drawing.toggleLayerVisibility}
+            onToggleLock={drawing.toggleLayerLock}
             onSelect={drawing.selectLayer}
             onReorder={drawing.reorderLayer}
           />
@@ -203,29 +247,29 @@ export default function DrawingWorkspace({
   const fileMenu: MenuDef = {
     label: "File",
     items: [
-      { type: "action", label: "New", onClick: () => {} },
-      { type: "action", label: "Open", onClick: () => {} },
+      { type: "action", label: "New", onClick: () => setShowNewDialog(true) },
+      { type: "action", label: "Open", onClick: () => openFileInputRef.current?.click() },
       { type: "action", label: "Save", shortcut: "Ctrl+S", onClick: () => drawing.exportImage() },
-      { type: "action", label: "Close", onClick: () => {} },
+      { type: "action", label: "Close", onClick: () => activeTabId && onCloseTab(activeTabId) },
     ],
   };
 
   const workspaceMenu: MenuDef = {
     label: "Workspace",
     items: [
-      { type: "checkbox", label: "Tools", checked: showToolsChecked, onToggle: () => setShowToolsChecked((v) => !v) },
+      { type: "checkbox", label: "Tools", checked: isPanelVisible("tools"), onToggle: () => togglePanelVisibility("tools") },
       {
         type: "checkbox",
         label: "Pencils",
-        checked: showPencilsChecked,
-        onToggle: () => setShowPencilsChecked((v) => !v),
+        checked: isPanelVisible("pencils"),
+        onToggle: () => togglePanelVisibility("pencils"),
       },
-      { type: "checkbox", label: "Hue", checked: showHueChecked, onToggle: () => setShowHueChecked((v) => !v) },
+      { type: "checkbox", label: "Hue", checked: isPanelVisible("hue"), onToggle: () => togglePanelVisibility("hue") },
       {
         type: "checkbox",
         label: "Layers",
-        checked: showLayersChecked,
-        onToggle: () => setShowLayersChecked((v) => !v),
+        checked: isPanelVisible("layers"),
+        onToggle: () => togglePanelVisibility("layers"),
       },
     ],
   };
@@ -236,6 +280,14 @@ export default function DrawingWorkspace({
       <div className="h-12 shrink-0 bg-neutral-900 border-b border-neutral-800">
         <MenuBar menus={[fileMenu, workspaceMenu]} />
       </div>
+
+      <input
+        ref={openFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleOpenFileChange}
+      />
 
       <div className="flex flex-1 min-h-0">
         <Sidebar
@@ -264,7 +316,11 @@ export default function DrawingWorkspace({
               onPointerUp={drawing.handlePointerUp}
               onDrop={drawing.handleDrop}
               onDragOver={drawing.handleDragOver}
-              onClose={onClose}
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={onSelectTab}
+              onCloseTab={onCloseTab}
+              onAddTab={() => setShowNewDialog(true)}
             />
           </div>
 
@@ -299,6 +355,16 @@ export default function DrawingWorkspace({
           setDragOverZone={setDragOverZone}
         />
       </div>
+
+      {showNewDialog && (
+        <NewImageDialog
+          onCreate={(size) => {
+            setShowNewDialog(false);
+            onNewTab(size);
+          }}
+          onCancel={() => setShowNewDialog(false)}
+        />
+      )}
     </div>
   );
-} 
+}

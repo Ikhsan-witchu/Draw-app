@@ -1,5 +1,6 @@
-import { X } from "lucide-react";
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { TabBar } from "../Workspace/TabBar.tsx";
+import type { DocumentTab } from "../../hooks/useDrawingCanvas";
 
 interface DrawingCanvasProps {
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -9,7 +10,11 @@ interface DrawingCanvasProps {
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onDrop: (e: ReactDragEvent<HTMLCanvasElement>) => void;
   onDragOver: (e: ReactDragEvent<HTMLCanvasElement>) => void;
-  onClose: () => void;
+  tabs: DocumentTab[];
+  activeTabId: string | null;
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
+  onAddTab: () => void;
 }
 
 export default function DrawingCanvas({
@@ -20,11 +25,23 @@ export default function DrawingCanvas({
   onPointerUp,
   onDrop,
   onDragOver,
-  onClose,
+  tabs,
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onAddTab,
 }: DrawingCanvasProps) {
   return (
-    <div className="relative w-full h-full min-w-0 min-h-0">
-      <div ref={viewportRef} className="w-full h-full overflow-auto">
+    <div className="w-full h-full min-w-0 min-h-0 flex flex-col">
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        onAddTab={onAddTab}
+      />
+
+      <div ref={viewportRef} className="flex-1 min-h-0 overflow-auto">
         <div className="min-w-full min-h-full flex items-center justify-center p-6">
           <canvas
             ref={canvasRef}
@@ -38,14 +55,6 @@ export default function DrawingCanvas({
           />
         </div>
       </div>
-
-      <button
-        onClick={onClose}
-        title="Tutup kanvas"
-        className="absolute top-3 right-3 z-20 p-1.5 rounded-md bg-neutral-900/90 border border-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
-      >
-        <X size={16} />
-      </button>
     </div>
   );
 }

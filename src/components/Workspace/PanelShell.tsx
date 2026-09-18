@@ -16,9 +16,9 @@ export function PanelShell({ title, dimmed, onDragStart, onDragEnd, children }: 
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-500 cursor-grab active:cursor-grabbing select-none border-b border-neutral-800 bg-neutral-900 min-w-0"
+        className="flex items-center gap-1 px-1.5 py-1 text-[11px] text-neutral-500 cursor-grab active:cursor-grabbing select-none border-b border-neutral-800 bg-neutral-900 min-w-0"
       >
-        <GripVertical size={14} className="shrink-0" />
+        <GripVertical size={11} className="shrink-0" />
         <span className="truncate">{title}</span>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto bg-neutral-900">{children}</div>

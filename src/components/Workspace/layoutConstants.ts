@@ -1,6 +1,6 @@
-export const ICON_ITEM_SIZE = 40;
-export const ICON_GRID_GAP = 8;
-export const PANEL_PADDING = 12;
+export const ICON_ITEM_SIZE = 22;
+export const ICON_GRID_GAP = 2;
+export const PANEL_PADDING = 4;
 
 // Lebar yang dibutuhkan panel grid-ikon supaya pas menampilkan N item per baris,
 // dengan ukuran item TETAP (tidak melar), plus padding panel di kiri-kanan.
