@@ -7,21 +7,29 @@ import {
 } from "react";
 import DrawingCanvas from "../Canvas/DrawingCanvas";
 import { useDrawingCanvas, type DocumentTab } from "../../hooks/useDrawingCanvas";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { IconGridPanel } from "./IconGridPanel";
 import { MenuBar, type MenuDef } from "./MenuBar";
 import { HuePanel } from "./HuePanel";
 import { LayersPanel } from "./LayersPanel";
 import { PanelShell } from "./PanelShell";
 import { Sidebar } from "./Sidebar";
-import { TOOLS, PENCILS } from "./toolsData";
-import { widthForColumns } from "./layoutConstants";
+import { MobileToolbar } from "./MobileToolbar";
+import { BottomSheet } from "./BottomSheet";
+import { TOOLS, BRUSHES } from "./toolsData";
+import {
+  widthForColumns,
+  BRUSH_ITEM_SIZE,
+  BRUSH_GRID_GAP,
+  BRUSH_PANEL_PADDING,
+} from "./layoutConstants";
 import type { DockZone, DropPosition, PanelId } from "./types";
 import NewImageDialog, { type DocumentSize } from "../Start/NewImageDialog";
 
 // Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
 const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
-  tools: widthForColumns(1), // sidebar isi tools: cukup 1 item per baris
-  pencils: widthForColumns(3), // sidebar isi pencils: cukup 3 item per baris
+  tools: widthForColumns(1),
+  brushes: widthForColumns(3, BRUSH_ITEM_SIZE, BRUSH_GRID_GAP, BRUSH_PANEL_PADDING),
   hue: 240,
   layers: 220,
 };
@@ -32,7 +40,7 @@ function computeSidebarWidth(panelIds: PanelId[]): number {
 }
 
 const INITIAL_LEFT_PANELS: PanelId[] = ["tools"];
-const INITIAL_RIGHT_PANELS: PanelId[] = ["hue", "pencils"];
+const INITIAL_RIGHT_PANELS: PanelId[] = ["hue", "brushes"];
 
 interface DrawingWorkspaceProps {
   tabs: DocumentTab[];
@@ -51,9 +59,11 @@ export default function DrawingWorkspace({
   onNewTab,
   onOpenTabFile,
 }: DrawingWorkspaceProps) {
+  const isMobile = useIsMobile();
+
   const [leftWidth, setLeftWidth] = useState(() => computeSidebarWidth(INITIAL_LEFT_PANELS));
   const [rightWidth, setRightWidth] = useState(() => computeSidebarWidth(INITIAL_RIGHT_PANELS));
-  const [bottomHeight, setBottomHeight] = useState(200);
+  const [bottomHeight, setBottomHeight] = useState(140);
 
   const [leftPanels, setLeftPanels] = useState<PanelId[]>(INITIAL_LEFT_PANELS);
   const [rightPanels, setRightPanels] = useState<PanelId[]>(INITIAL_RIGHT_PANELS);
@@ -65,14 +75,14 @@ export default function DrawingWorkspace({
   // Ingat zona terakhir tiap panel, supaya waktu di-centang lagi dia balik ke tempat semula
   const lastZoneRef = useRef<Partial<Record<PanelId, DockZone>>>({
     tools: "left",
-    pencils: "right",
+    brushes: "right",
     hue: "right",
     layers: "bottom",
   });
 
   // State fungsional: tool aktif, warna (hue/sat/val)
   const [activeTool, setActiveTool] = useState<string>(TOOLS[0]?.id ?? "brush");
-  const [activePencil, setActivePencil] = useState<string>(PENCILS[0]?.id ?? "pen"); // visual-only dulu
+  const [activeBrush, setActiveBrush] = useState<string>(BRUSHES[0]?.id ?? "pen");
   const [hue, setHue] = useState(200);
   const [sat, setSat] = useState(70);
   const [val, setVal] = useState(85);
@@ -92,6 +102,11 @@ export default function DrawingWorkspace({
 
   const [showNewDialog, setShowNewDialog] = useState(false);
   const openFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Mobile bottom sheets
+  const [mobileColorOpen, setMobileColorOpen] = useState(false);
+  const [mobileBrushesOpen, setMobileBrushesOpen] = useState(false);
+  const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
 
   function handleOpenFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -164,7 +179,6 @@ export default function DrawingWorkspace({
 
   function togglePanelVisibility(id: PanelId) {
     if (isPanelVisible(id)) {
-      // Sembunyikan: hapus dari zona manapun dia berada sekarang, ingat zona itu
       if (leftPanels.includes(id)) {
         lastZoneRef.current[id] = "left";
         setLeftPanels((prev) => prev.filter((p) => p !== id));
@@ -176,7 +190,6 @@ export default function DrawingWorkspace({
         setBottomPanels((prev) => prev.filter((p) => p !== id));
       }
     } else {
-      // Tampilkan lagi: taruh di zona terakhir dia berada
       const zone = lastZoneRef.current[id] ?? "right";
       if (zone === "left") setLeftPanels((prev) => [id, ...prev]);
       else if (zone === "right") setRightPanels((prev) => [id, ...prev]);
@@ -202,10 +215,17 @@ export default function DrawingWorkspace({
         </PanelShell>
       );
     }
-    if (id === "pencils") {
+    if (id === "brushes") {
       return (
-        <PanelShell title="Pencils" {...common}>
-          <IconGridPanel items={PENCILS} activeId={activePencil} onSelect={setActivePencil} />
+        <PanelShell title="Brush Palette" {...common}>
+          <IconGridPanel
+            items={BRUSHES}
+            activeId={activeBrush}
+            onSelect={setActiveBrush}
+            itemSize={BRUSH_ITEM_SIZE}
+            iconSize={18}
+            gap={BRUSH_GRID_GAP}
+          />
         </PanelShell>
       );
     }
@@ -244,6 +264,7 @@ export default function DrawingWorkspace({
     return null;
   }
 
+  // ── Desktop menu definitions ──
   const fileMenu: MenuDef = {
     label: "File",
     items: [
@@ -260,9 +281,9 @@ export default function DrawingWorkspace({
       { type: "checkbox", label: "Tools", checked: isPanelVisible("tools"), onToggle: () => togglePanelVisibility("tools") },
       {
         type: "checkbox",
-        label: "Pencils",
-        checked: isPanelVisible("pencils"),
-        onToggle: () => togglePanelVisibility("pencils"),
+        label: "Brush Palette",
+        checked: isPanelVisible("brushes"),
+        onToggle: () => togglePanelVisibility("brushes"),
       },
       { type: "checkbox", label: "Hue", checked: isPanelVisible("hue"), onToggle: () => togglePanelVisibility("hue") },
       {
@@ -274,6 +295,116 @@ export default function DrawingWorkspace({
     ],
   };
 
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // ════════════════════════════════════════
+  // ── MOBILE LAYOUT ──
+  // ════════════════════════════════════════
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
+        <MobileToolbar
+          tools={TOOLS}
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+          onUndo={drawing.undo}
+          onSave={() => drawing.exportImage()}
+          onNewFile={() => setShowNewDialog(true)}
+          onOpenFile={onOpenTabFile}
+          onCloseTab={() => activeTabId && onCloseTab(activeTabId)}
+          color={color}
+          onToggleColor={() => setMobileColorOpen((p) => !p)}
+          onToggleBrushes={() => setMobileBrushesOpen((p) => !p)}
+          onToggleLayers={() => setMobileLayersOpen((p) => !p)}
+          tabTitle={activeTab?.title ?? ""}
+        />
+
+        {/* Fullscreen canvas */}
+        <div className="flex-1 min-h-0">
+          <DrawingCanvas
+            viewportRef={drawing.viewportRef}
+            canvasRef={drawing.canvasRef}
+            onPointerDown={drawing.handlePointerDown}
+            onPointerMove={drawing.handlePointerMove}
+            onPointerUp={drawing.handlePointerUp}
+            onDrop={drawing.handleDrop}
+            onDragOver={drawing.handleDragOver}
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onAddTab={() => setShowNewDialog(true)}
+            hideTabBar
+          />
+        </div>
+
+        {/* Bottom sheets for panels */}
+        <BottomSheet title="Color" open={mobileColorOpen} onClose={() => setMobileColorOpen(false)}>
+          <div className="h-72">
+            <HuePanel
+              hue={hue}
+              sat={sat}
+              val={val}
+              onChange={(next) => {
+                setHue(next.hue);
+                setSat(next.sat);
+                setVal(next.val);
+              }}
+            />
+          </div>
+        </BottomSheet>
+
+        <BottomSheet
+          title="Brush Palette"
+          open={mobileBrushesOpen}
+          onClose={() => setMobileBrushesOpen(false)}
+        >
+          <div className="p-3">
+            <IconGridPanel
+              items={BRUSHES}
+              activeId={activeBrush}
+              onSelect={(id) => {
+                setActiveBrush(id);
+                setMobileBrushesOpen(false);
+              }}
+              itemSize={BRUSH_ITEM_SIZE}
+              iconSize={18}
+              gap={BRUSH_GRID_GAP}
+            />
+          </div>
+        </BottomSheet>
+
+        <BottomSheet title="Layers" open={mobileLayersOpen} onClose={() => setMobileLayersOpen(false)}>
+          <div className="min-h-[200px]">
+            <LayersPanel
+              layers={drawing.layers}
+              activeLayerId={drawing.activeLayerId}
+              onAdd={drawing.addLayer}
+              onDelete={drawing.deleteLayer}
+              onToggleVisible={drawing.toggleLayerVisibility}
+              onToggleLock={drawing.toggleLayerLock}
+              onSelect={drawing.selectLayer}
+              onReorder={drawing.reorderLayer}
+            />
+          </div>
+        </BottomSheet>
+
+        {showNewDialog && (
+          <NewImageDialog
+            onCreate={(size) => {
+              setShowNewDialog(false);
+              onNewTab(size);
+            }}
+            onCancel={() => setShowNewDialog(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════
+  // ── DESKTOP LAYOUT ──
+  // ════════════════════════════════════════
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
       {/* Top bar */}

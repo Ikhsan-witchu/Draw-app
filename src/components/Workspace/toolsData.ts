@@ -26,7 +26,7 @@ export const TOOLS: ToolItem[] = [
   { id: "text", icon: Type, label: "Text" },
 ];
 
-export const PENCILS: ToolItem[] = [
+export const BRUSHES: ToolItem[] = [
   { id: "pen", icon: PenTool, label: "Pen" },
   { id: "round", icon: Paintbrush, label: "Round brush" },
   { id: "flat", icon: Paintbrush2, label: "Flat brush" },

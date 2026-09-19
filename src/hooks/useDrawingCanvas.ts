@@ -775,5 +775,6 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     selectLayer,
     reorderLayer,
     exportImage,
+    undo: handleUndo,
   };
 }

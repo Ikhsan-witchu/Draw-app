@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 
-export type PanelId = "tools" | "pencils" | "hue" | "layers";
+export type PanelId = "tools" | "brushes" | "hue" | "layers";
 export type DockZone = "left" | "right" | "bottom";
 export type DropPosition = "start" | "end";
 

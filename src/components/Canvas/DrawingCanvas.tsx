@@ -15,6 +15,8 @@ interface DrawingCanvasProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddTab: () => void;
+  /** Hide the tab bar (used on mobile where tabs are managed elsewhere). */
+  hideTabBar?: boolean;
 }
 
 export default function DrawingCanvas({
@@ -30,19 +32,22 @@ export default function DrawingCanvas({
   onSelectTab,
   onCloseTab,
   onAddTab,
+  hideTabBar = false,
 }: DrawingCanvasProps) {
   return (
     <div className="w-full h-full min-w-0 min-h-0 flex flex-col">
-      <TabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={onSelectTab}
-        onCloseTab={onCloseTab}
-        onAddTab={onAddTab}
-      />
+      {!hideTabBar && (
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={onSelectTab}
+          onCloseTab={onCloseTab}
+          onAddTab={onAddTab}
+        />
+      )}
 
       <div ref={viewportRef} className="flex-1 min-h-0 overflow-auto">
-        <div className="min-w-full min-h-full flex items-center justify-center p-6">
+        <div className={`min-w-full min-h-full flex items-center justify-center ${hideTabBar ? "p-2" : "p-6"}`}>
           <canvas
             ref={canvasRef}
             className="bg-white rounded-sm shadow-2xl touch-none block"

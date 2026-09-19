@@ -6,18 +6,32 @@ interface IconGridPanelProps {
   items: ToolItem[];
   activeId: string;
   onSelect: (id: string) => void;
+  /** Override default item cell size (px). Falls back to ICON_ITEM_SIZE. */
+  itemSize?: number;
+  /** Override default icon render size (px). Falls back to 14. */
+  iconSize?: number;
+  /** Override default grid gap (px). Falls back to ICON_GRID_GAP. */
+  gap?: number;
 }
 
-export function IconGridPanel({ items, activeId, onSelect }: IconGridPanelProps) {
-  const [gridRef, columns] = useContainerColumns<HTMLDivElement>(ICON_ITEM_SIZE, ICON_GRID_GAP);
+export function IconGridPanel({
+  items,
+  activeId,
+  onSelect,
+  itemSize = ICON_ITEM_SIZE,
+  iconSize = 14,
+  gap = ICON_GRID_GAP,
+}: IconGridPanelProps) {
+  const [gridRef, columns] = useContainerColumns<HTMLDivElement>(itemSize, gap);
 
   return (
     <div ref={gridRef} className="p-1 h-full overflow-y-auto">
       <div
-        className="grid gap-0.5"
+        className="grid"
         style={{
-          gridTemplateColumns: `repeat(${columns}, ${ICON_ITEM_SIZE}px)`,
-          gridAutoRows: `${ICON_ITEM_SIZE}px`,
+          gridTemplateColumns: `repeat(${columns}, ${itemSize}px)`,
+          gridAutoRows: `${itemSize}px`,
+          gap: `${gap}px`,
         }}
       >
         {items.map(({ id, icon: Icon, label }) => (
@@ -31,7 +45,7 @@ export function IconGridPanel({ items, activeId, onSelect }: IconGridPanelProps)
                 : "text-neutral-400 hover:text-white hover:bg-neutral-800"
             }`}
           >
-            <Icon size={14} />
+            <Icon size={iconSize} />
           </button>
         ))}
       </div>
