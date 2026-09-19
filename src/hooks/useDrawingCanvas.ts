@@ -11,8 +11,10 @@ import {
   generateId,
   loadImageFromFile,
 } from "../utils/canvasUtils";
+import { dispatchBrush } from "../utils/brushUtils";
 import { useLayerManager } from "./useLayerManager";
 import { useCanvasGestures } from "./useCanvasGestures";
+
 
 // Re-export tipe yang dibutuhkan konsumen luar
 export type { LayerMeta, DocumentTab } from "../types/drawing";
@@ -320,40 +322,11 @@ export function useDrawingCanvas({
     if (!ctx) return;
 
     const isEraser = tool === "eraser";
-    ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    // Pressure dynamics
-    const baseSize = Math.max(1, brushSize);
-    const width = to.pressure !== 0.5
-      ? Math.max(1, baseSize * (0.15 + 0.85 * to.pressure))
-      : baseSize;
-
-    // Alpha berdasarkan tipe brush
-    if (brushType === "marker") ctx.globalAlpha = isEraser ? 1 : 0.65;
-    else if (brushType === "feather") ctx.globalAlpha = isEraser ? 0.8 : 0.45;
-    else ctx.globalAlpha = 1;
-
-    ctx.lineWidth = width;
-
-    if (from.x === to.x && from.y === to.y) {
-      // Tap = lingkaran solid
-      ctx.beginPath();
-      ctx.arc(to.x, to.y, width / 2, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
-    }
-
-    ctx.globalAlpha = 1;
+    dispatchBrush(brushType, ctx, from, to, Math.max(1, brushSize), color, isEraser);
     recomposite();
   }
+
+
 
   const isDrawable = tool === "brush" || tool === "eraser";
 

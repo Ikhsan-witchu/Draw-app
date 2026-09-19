@@ -26,7 +26,7 @@ export function Sidebar({
 
   return (
     <div
-      className={`relative flex bg-neutral-900 shrink-0 ${isVertical ? "flex-col" : "flex-row"}`}
+      className={`relative flex bg-neutral-900 shrink-0 overflow-hidden ${isVertical ? "flex-col" : "flex-row"}`}
       style={isVertical ? { width: size } : { height: size }}
       onDragOver={(e) => {
         e.preventDefault();

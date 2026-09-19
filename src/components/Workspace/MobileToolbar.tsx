@@ -9,31 +9,26 @@ import {
   FilePlus,
   FolderOpen,
   Save,
+  ChevronRight,
 } from "lucide-react";
 import type { ToolItem } from "./types";
 import { BrushSizeControl } from "./BrushSizeControl";
 
 interface MobileToolbarProps {
-  // Tool selection
   tools: ToolItem[];
   activeTool: string;
   onSelectTool: (id: string) => void;
-  // Brush size
   brushSize: number;
   onBrushSizeChange: (size: number) => void;
-  // Actions
   onUndo: () => void;
   onSave: () => void;
   onNewFile: () => void;
   onOpenFile: (file: File) => void;
   onCloseTab: () => void;
-  // Active color (for swatch display)
   color: string;
-  // Panel toggles
   onToggleColor: () => void;
   onToggleBrushes: () => void;
   onToggleLayers: () => void;
-  // Tab info
   tabTitle: string;
 }
 
@@ -63,82 +58,68 @@ export function MobileToolbar({
     e.target.value = "";
   }
 
+  const activeToolItem = tools.find((t) => t.id === activeTool);
+
   return (
     <>
-      {/* ── Top bar ── */}
-      <div className="h-11 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center px-2 gap-1.5">
-        {/* Hamburger */}
+      {/* ── Top bar ────────────────────────────────────────────────────────── */}
+      <div className="h-12 shrink-0 bg-neutral-900/95 border-b border-neutral-800 flex items-center px-2 gap-1 backdrop-blur-sm">
+
+        {/* Hamburger menu */}
         <button
           onClick={() => setMenuOpen((p) => !p)}
-          className="p-2 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
+          className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 active:bg-neutral-700 transition-colors"
         >
           <Menu size={18} />
         </button>
 
-        {/* Tab title */}
-        <span className="flex-1 text-xs text-neutral-300 truncate text-center font-medium">
-          {tabTitle}
-        </span>
+        {/* Tab title — klik untuk rename (disabled for now, just display) */}
+        <div className="flex-1 flex items-center gap-1.5 min-w-0 px-1">
+          <span className="text-neutral-300 text-xs font-medium truncate leading-none">
+            {tabTitle || "Untitled"}
+          </span>
+        </div>
 
-        {/* Quick actions */}
-        <button
-          onClick={onUndo}
-          className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
-          title="Undo"
-        >
-          <Undo2 size={16} />
-        </button>
+        {/* Right actions */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={onUndo}
+            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 active:bg-neutral-700 transition-colors"
+            title="Undo"
+          >
+            <Undo2 size={17} />
+          </button>
 
-        {/* Brush Size Control */}
-        <BrushSizeControl
-          size={brushSize}
-          onChange={onBrushSizeChange}
-          color={color}
-          isEraser={activeTool === "eraser"}
-          compact={true}
-        />
+          <BrushSizeControl
+            size={brushSize}
+            onChange={onBrushSizeChange}
+            color={color}
+            isEraser={activeTool === "eraser"}
+            compact={true}
+          />
 
-        <button
-          onClick={onSave}
-          className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
-          title="Save"
-        >
-          <Download size={16} />
-        </button>
+          <button
+            onClick={onSave}
+            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 active:bg-neutral-700 transition-colors"
+            title="Simpan"
+          >
+            <Download size={17} />
+          </button>
+        </div>
       </div>
 
-      {/* Dropdown menu */}
+      {/* ── Dropdown menu ──────────────────────────────────────────────────── */}
       {menuOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)}>
           <div
-            className="absolute top-11 left-1 bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl py-1 min-w-[180px] z-50"
+            className="absolute top-12 left-1 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl py-1.5 min-w-[200px] z-50 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => { onNewFile(); setMenuOpen(false); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:bg-neutral-800"
-            >
-              <FilePlus size={15} /> New
-            </button>
-            <button
-              onClick={() => { fileInputRef.current?.click(); setMenuOpen(false); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:bg-neutral-800"
-            >
-              <FolderOpen size={15} /> Open
-            </button>
-            <button
-              onClick={() => { onSave(); setMenuOpen(false); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:bg-neutral-800"
-            >
-              <Save size={15} /> Save
-            </button>
+            <MenuItem icon={<FilePlus size={15} />} label="New" onPress={() => { onNewFile(); setMenuOpen(false); }} />
+            <MenuItem icon={<FolderOpen size={15} />} label="Open" onPress={() => { fileInputRef.current?.click(); setMenuOpen(false); }} />
+            <MenuItem icon={<Save size={15} />} label="Save" onPress={() => { onSave(); setMenuOpen(false); }} />
             <div className="border-t border-neutral-800 my-1" />
-            <button
-              onClick={() => { onCloseTab(); setMenuOpen(false); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:bg-neutral-800"
-            >
-              <X size={15} /> Close
-            </button>
+            <MenuItem icon={<X size={15} />} label="Close" onPress={() => { onCloseTab(); setMenuOpen(false); }} danger />
           </div>
         </div>
       )}
@@ -151,57 +132,116 @@ export function MobileToolbar({
         onChange={handleFileChange}
       />
 
-      {/* ── Bottom toolbar ── */}
-      <div className="shrink-0 bg-neutral-900 border-t border-neutral-800 flex items-center pb-safe">
-        {/* Tools strip */}
-        <div className="flex-1 flex items-center overflow-x-auto px-1 gap-0.5 h-12">
-          {tools.map(({ id, icon: Icon, label }) => (
+      {/* ── Bottom toolbar ─────────────────────────────────────────────────── */}
+      <div className="shrink-0 bg-neutral-900/95 border-t border-neutral-800 backdrop-blur-sm pb-safe">
+        <div className="flex items-stretch h-14">
+
+          {/* Tool strip — scrollable */}
+          <div className="flex-1 flex items-center overflow-x-auto px-1 gap-0.5 min-w-0">
+            {tools.map(({ id, icon: Icon, label }) => {
+              const isActive = activeTool === id;
+              return (
+                <button
+                  key={id}
+                  title={label}
+                  onClick={() => onSelectTool(id)}
+                  className={`shrink-0 flex flex-col items-center justify-center gap-0.5 w-11 h-11 rounded-xl transition-all duration-150 ${
+                    isActive
+                      ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/30"
+                      : "text-neutral-400 active:bg-neutral-800"
+                  }`}
+                >
+                  <Icon size={17} />
+                  {isActive && (
+                    <span className="text-[8px] leading-none text-white/80 font-medium truncate max-w-[38px]">
+                      {label.split(" ")[0]}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Separator */}
+          <div className="w-px bg-neutral-800 my-2.5 shrink-0" />
+
+          {/* Panel toggles */}
+          <div className="flex items-center gap-0.5 px-1.5 shrink-0">
+
+            {/* Color swatch button */}
             <button
-              key={id}
-              title={label}
-              onClick={() => onSelectTool(id)}
-              className={`shrink-0 w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
-                activeTool === id
-                  ? "bg-white text-neutral-900"
-                  : "text-neutral-400 active:bg-neutral-800"
-              }`}
+              onClick={onToggleColor}
+              className="flex flex-col items-center justify-center gap-0.5 w-11 h-11 rounded-xl active:bg-neutral-800 transition-colors"
+              title="Color"
             >
-              <Icon size={18} />
+              <div
+                className="w-6 h-6 rounded-full border-2 border-neutral-600 shadow-md"
+                style={{ backgroundColor: color }}
+              />
+              <span className="text-[8px] text-neutral-500 leading-none">Warna</span>
             </button>
-          ))}
+
+            {/* Brush palette */}
+            <button
+              onClick={onToggleBrushes}
+              className="flex flex-col items-center justify-center gap-0.5 w-11 h-11 rounded-xl text-neutral-400 active:bg-neutral-800 transition-colors"
+              title="Brush Palette"
+            >
+              <Paintbrush size={17} />
+              <span className="text-[8px] text-neutral-500 leading-none">Brush</span>
+            </button>
+
+            {/* Layers */}
+            <button
+              onClick={onToggleLayers}
+              className="flex flex-col items-center justify-center gap-0.5 w-11 h-11 rounded-xl text-neutral-400 active:bg-neutral-800 transition-colors"
+              title="Layers"
+            >
+              <Layers size={17} />
+              <span className="text-[8px] text-neutral-500 leading-none">Layer</span>
+            </button>
+          </div>
         </div>
 
-        {/* Divider */}
-        <div className="w-px h-7 bg-neutral-700 shrink-0" />
-
-        {/* Panel toggles */}
-        <div className="flex items-center gap-0.5 px-1 shrink-0">
-          <button
-            onClick={onToggleColor}
-            className="w-10 h-10 flex items-center justify-center rounded-lg text-neutral-400 active:bg-neutral-800"
-            title="Color"
-          >
-            <div
-              className="w-5 h-5 rounded-full border-2 border-neutral-600"
-              style={{ backgroundColor: color }}
-            />
-          </button>
-          <button
-            onClick={onToggleBrushes}
-            className="w-10 h-10 flex items-center justify-center rounded-lg text-neutral-400 active:bg-neutral-800"
-            title="Brush Palette"
-          >
-            <Paintbrush size={18} />
-          </button>
-          <button
-            onClick={onToggleLayers}
-            className="w-10 h-10 flex items-center justify-center rounded-lg text-neutral-400 active:bg-neutral-800"
-            title="Layers"
-          >
-            <Layers size={18} />
-          </button>
-        </div>
+        {/* Active tool + brush size mini info strip */}
+        {activeToolItem && (
+          <div className="flex items-center gap-2 px-3 pb-1">
+            <activeToolItem.icon size={10} className="text-indigo-400 shrink-0" />
+            <span className="text-[10px] text-neutral-500 leading-none">
+              {activeToolItem.label}
+            </span>
+            <ChevronRight size={9} className="text-neutral-700 shrink-0" />
+            <span className="text-[10px] text-neutral-500 leading-none">
+              Size {brushSize}px
+            </span>
+          </div>
+        )}
       </div>
     </>
+  );
+}
+
+// ── Helper component ───────────────────────────────────────────────────────────
+
+interface MenuItemProps {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+}
+
+function MenuItem({ icon, label, onPress, danger }: MenuItemProps) {
+  return (
+    <button
+      onClick={onPress}
+      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+        danger
+          ? "text-red-400 hover:bg-red-500/10"
+          : "text-neutral-300 hover:bg-neutral-800"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

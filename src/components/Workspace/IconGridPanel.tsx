@@ -25,9 +25,9 @@ export function IconGridPanel({
   const [gridRef, columns] = useContainerColumns<HTMLDivElement>(itemSize, gap);
 
   return (
-    <div ref={gridRef} className="p-1 h-full overflow-y-auto touch-pan-y">
+    <div ref={gridRef} className="p-[5px] h-full overflow-y-auto overflow-x-hidden touch-pan-y flex flex-col items-center">
       <div
-        className="grid"
+        className="grid justify-center justify-items-center"
         style={{
           gridTemplateColumns: `repeat(${columns}, ${itemSize}px)`,
           gridAutoRows: `${itemSize}px`,
@@ -39,10 +39,11 @@ export function IconGridPanel({
             key={id}
             title={label}
             onClick={() => onSelect(id)}
+            style={{ width: `${itemSize}px`, height: `${itemSize}px` }}
             className={`flex items-center justify-center rounded transition-colors ${
               activeId === id
-                ? "bg-white text-neutral-900"
-                : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+                ? "bg-white text-neutral-900 shadow-sm"
+                : "text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-95"
             }`}
           >
             <Icon size={iconSize} />

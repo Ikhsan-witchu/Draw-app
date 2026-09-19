@@ -16,6 +16,7 @@ import { MobileToolbar } from "./MobileToolbar";
 import { BottomSheet } from "./BottomSheet";
 import { BrushSizeControl } from "./BrushSizeControl";
 import { PanelRenderer } from "./PanelRenderer";
+import { ResizeSplitter } from "./ResizeSplitter";
 import { TOOLS, BRUSHES } from "./toolsData";
 import {
   widthForColumns,
@@ -37,6 +38,44 @@ const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
 function computeSidebarWidth(panelIds: PanelId[]): number {
   const widths = panelIds.map((id) => PANEL_PREFERRED_WIDTH[id] ?? 200);
   return widths.length > 0 ? Math.max(...widths) : 200;
+}
+
+function computeMinSidebarWidth(panelIds: PanelId[]): number {
+  if (panelIds.length === 0) return 32;
+  // Jika hanya panel tools, lebar minimum adalah 1 kolom pas (32px)
+  if (panelIds.every((id) => id === "tools")) {
+    return widthForColumns(1);
+  }
+  // Jika kombinasi tools dan brushes saja
+  if (panelIds.every((id) => id === "tools" || id === "brushes")) {
+    return panelIds.includes("brushes")
+      ? widthForColumns(1, BRUSH_ITEM_SIZE, BRUSH_GRID_GAP, BRUSH_PANEL_PADDING)
+      : widthForColumns(1);
+  }
+  // Jika ada color picker atau layers panel
+  return 180;
+}
+
+function snapLeftWidth(raw: number, panelIds: PanelId[]): number {
+  const minWidth = computeMinSidebarWidth(panelIds);
+  if (raw <= minWidth) return minWidth;
+
+  // Magnetic snapping ke kelipatan kolom jika panel kiri hanya tools
+  if (panelIds.every((id) => id === "tools")) {
+    const colSnapPoints = [
+      widthForColumns(1), // 32px (1 col)
+      widthForColumns(2), // 56px (2 cols)
+      widthForColumns(3), // 80px (3 cols)
+      widthForColumns(4), // 104px (4 cols)
+    ];
+    for (const point of colSnapPoints) {
+      if (Math.abs(raw - point) <= 6) {
+        return point;
+      }
+    }
+  }
+
+  return Math.min(400, Math.max(minWidth, raw));
 }
 
 const INITIAL_LEFT_PANELS: PanelId[] = ["tools"];
@@ -117,6 +156,7 @@ export default function DrawingWorkspace({
     e.target.value = "";
   }
 
+  const [activeResizeZone, setActiveResizeZone] = useState<DockZone | null>(null);
   const resizingZone = useRef<DockZone | null>(null);
   const startPos = useRef(0);
   const startSize = useRef(0);
@@ -127,28 +167,52 @@ export default function DrawingWorkspace({
 
     if (zone === "left") {
       const delta = e.clientX - startPos.current;
-      setLeftWidth(Math.min(400, Math.max(64, startSize.current + delta)));
+      setLeftWidth(snapLeftWidth(startSize.current + delta, leftPanels));
     } else if (zone === "right") {
       const delta = e.clientX - startPos.current;
-      setRightWidth(Math.min(400, Math.max(64, startSize.current - delta)));
+      const minRight = computeMinSidebarWidth(rightPanels);
+      setRightWidth(Math.min(450, Math.max(minRight, startSize.current - delta)));
     } else {
       const delta = e.clientY - startPos.current;
-      setBottomHeight(Math.min(500, Math.max(80, startSize.current - delta)));
+      setBottomHeight(Math.min(500, Math.max(64, startSize.current - delta)));
     }
   }
 
   function handleResizeEnd() {
     resizingZone.current = null;
+    setActiveResizeZone(null);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
     window.removeEventListener("mousemove", handleResizeMove);
     window.removeEventListener("mouseup", handleResizeEnd);
   }
 
   function handleResizeStart(zone: DockZone, e: ReactMouseEvent<HTMLDivElement>) {
+    e.preventDefault();
     resizingZone.current = zone;
+    setActiveResizeZone(zone);
     startPos.current = zone === "bottom" ? e.clientY : e.clientX;
     startSize.current = zone === "left" ? leftWidth : zone === "right" ? rightWidth : bottomHeight;
+    document.body.style.cursor = zone === "bottom" ? "row-resize" : "col-resize";
+    document.body.style.userSelect = "none";
     window.addEventListener("mousemove", handleResizeMove);
     window.addEventListener("mouseup", handleResizeEnd);
+  }
+
+  function handleSplitterDoubleClick(zone: DockZone) {
+    if (zone === "left") {
+      if (leftPanels.every((id) => id === "tools")) {
+        const c1 = widthForColumns(1);
+        const c2 = widthForColumns(2);
+        setLeftWidth((prev) => (Math.abs(prev - c1) < 4 ? c2 : c1));
+      } else {
+        setLeftWidth(computeSidebarWidth(leftPanels));
+      }
+    } else if (zone === "right") {
+      setRightWidth(computeSidebarWidth(rightPanels));
+    } else if (zone === "bottom") {
+      setBottomHeight(140);
+    }
   }
 
   function handleDropPanel(zone: DockZone, panelId: PanelId, position: DropPosition) {
@@ -419,9 +483,11 @@ export default function DrawingWorkspace({
           isDragOver={dragOverZone === "left"}
           setDragOverZone={setDragOverZone}
         />
-        <div
-          onMouseDown={(e) => handleResizeStart("left", e)}
-          className="w-1 cursor-col-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
+        <ResizeSplitter
+          zone="left"
+          isResizing={activeResizeZone === "left"}
+          onResizeStart={handleResizeStart}
+          onDoubleClick={handleSplitterDoubleClick}
         />
 
         {/* Kolom tengah: kanvas di atas, bottom bar di bawah */}
@@ -451,9 +517,11 @@ export default function DrawingWorkspace({
             />
           </div>
 
-          <div
-            onMouseDown={(e) => handleResizeStart("bottom", e)}
-            className="h-1 cursor-row-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
+          <ResizeSplitter
+            zone="bottom"
+            isResizing={activeResizeZone === "bottom"}
+            onResizeStart={handleResizeStart}
+            onDoubleClick={handleSplitterDoubleClick}
           />
           <Sidebar
             zone="bottom"
@@ -467,9 +535,11 @@ export default function DrawingWorkspace({
           />
         </div>
 
-        <div
-          onMouseDown={(e) => handleResizeStart("right", e)}
-          className="w-1 cursor-col-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
+        <ResizeSplitter
+          zone="right"
+          isResizing={activeResizeZone === "right"}
+          onResizeStart={handleResizeStart}
+          onDoubleClick={handleSplitterDoubleClick}
         />
         <Sidebar
           zone="right"

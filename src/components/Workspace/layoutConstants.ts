@@ -1,7 +1,7 @@
 // Tools panel — compact icons (Krita-style)
 export const ICON_ITEM_SIZE = 22;
 export const ICON_GRID_GAP = 2;
-export const PANEL_PADDING = 4;
+export const PANEL_PADDING = 5;
 
 // Brush Palette — larger items for visual brush previews
 export const BRUSH_ITEM_SIZE = 40;
