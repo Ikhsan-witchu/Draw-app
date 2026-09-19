@@ -38,7 +38,7 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto pb-safe touch-pan-y">
+        <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-safe touch-pan-y">
           {children}
         </div>
       </div>

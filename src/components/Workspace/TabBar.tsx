@@ -11,7 +11,7 @@ interface TabBarProps {
 
 export function TabBar({ tabs, activeTabId, onSelectTab, onCloseTab, onAddTab }: TabBarProps) {
   return (
-    <div className="h-10 shrink-0 bg-neutral-950 border-b border-neutral-800 flex items-stretch overflow-x-auto">
+    <div className="h-10 shrink-0 bg-neutral-950 border-b border-neutral-800 flex items-stretch overflow-x-auto no-scrollbar">
       {tabs.map((tab) => (
         <div
           key={tab.id}

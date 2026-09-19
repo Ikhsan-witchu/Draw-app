@@ -137,7 +137,7 @@ export function MobileToolbar({
         <div className="flex items-stretch h-14">
 
           {/* Tool strip — scrollable */}
-          <div className="flex-1 flex items-center overflow-x-auto px-1 gap-0.5 min-w-0">
+          <div className="flex-1 flex items-center overflow-x-auto no-scrollbar px-1 gap-0.5 min-w-0">
             {tools.map(({ id, icon: Icon, label }) => {
               const isActive = activeTool === id;
               return (

@@ -53,7 +53,7 @@ export function LayersPanel({
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar touch-pan-y">
         {layers.map((layer) => (
           <div
             key={layer.id}
