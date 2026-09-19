@@ -25,7 +25,7 @@ export function IconGridPanel({
   const [gridRef, columns] = useContainerColumns<HTMLDivElement>(itemSize, gap);
 
   return (
-    <div ref={gridRef} className="p-1 h-full overflow-y-auto">
+    <div ref={gridRef} className="p-1 h-full overflow-y-auto touch-pan-y">
       <div
         className="grid"
         style={{

@@ -53,7 +53,7 @@ export function LayersPanel({
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
         {layers.map((layer) => (
           <div
             key={layer.id}
@@ -68,7 +68,7 @@ export function LayersPanel({
             }}
             onDrop={(e) => handleDrop(e, layer.id)}
             onClick={() => onSelect(layer.id)}
-            className={`flex items-center gap-1.5 px-1.5 py-0.5 cursor-pointer border-b border-neutral-800/60 ${
+            className={`flex items-center gap-2 px-2 py-1.5 sm:py-0.5 cursor-pointer border-b border-neutral-800/60 ${
               activeLayerId === layer.id ? "bg-neutral-800" : "hover:bg-neutral-800/50"
             }`}
           >

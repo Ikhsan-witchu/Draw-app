@@ -335,6 +335,14 @@ export default function DrawingWorkspace({
             onCloseTab={onCloseTab}
             onAddTab={() => setShowNewDialog(true)}
             hideTabBar
+            zoom={drawing.zoom}
+            panX={drawing.panX}
+            panY={drawing.panY}
+            rotation={drawing.rotation}
+            onResetView={drawing.resetView}
+            onResetRotation={drawing.resetRotation}
+            canvasWidth={drawing.canvasWidth}
+            canvasHeight={drawing.canvasHeight}
           />
         </div>
 
@@ -452,6 +460,14 @@ export default function DrawingWorkspace({
               onSelectTab={onSelectTab}
               onCloseTab={onCloseTab}
               onAddTab={() => setShowNewDialog(true)}
+              zoom={drawing.zoom}
+              panX={drawing.panX}
+              panY={drawing.panY}
+              rotation={drawing.rotation}
+              onResetView={drawing.resetView}
+              onResetRotation={drawing.resetRotation}
+              canvasWidth={drawing.canvasWidth}
+              canvasHeight={drawing.canvasHeight}
             />
           </div>
 

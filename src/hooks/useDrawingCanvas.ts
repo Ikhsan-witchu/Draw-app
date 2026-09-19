@@ -2,7 +2,6 @@ import {
   useRef,
   useState,
   useEffect,
-  useLayoutEffect,
   type PointerEvent as ReactPointerEvent,
   type DragEvent as ReactDragEvent,
 } from "react";
@@ -36,6 +35,9 @@ interface TabStore {
   layerCanvases: Map<string, HTMLCanvasElement>;
   history: Map<string, ImageData[]>;
   zoom: number;
+  panX: number;
+  panY: number;
+  rotation: number;
 }
 
 interface UseDrawingCanvasOptions {
@@ -46,16 +48,9 @@ interface UseDrawingCanvasOptions {
   onColorPick?: (hsl: { hue: number; sat: number; val: number }) => void;
 }
 
-interface ZoomAnchor {
-  docX: number;
-  docY: number;
-  clientX: number;
-  clientY: number;
-}
-
 const MAX_HISTORY = 25;
-const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 8;
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 20;
 
 function hslStringToRgb(hslString: string): [number, number, number] {
   const match = hslString.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
@@ -208,8 +203,6 @@ function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// Cari nomor terkecil yang belum dipakai di antara nama yang ADA sekarang,
-// bukan cuma nambah terus — jadi "Layer 2" bisa dipakai ulang kalau kosong.
 function nextAvailableName(existingNames: string[], prefix: string): string {
   let n = 1;
   while (existingNames.includes(`${prefix} ${n}`)) {
@@ -218,30 +211,58 @@ function nextAvailableName(existingNames: string[], prefix: string): string {
   return `${prefix} ${n}`;
 }
 
+interface PointerInfo {
+  id: number;
+  clientX: number;
+  clientY: number;
+  pointerType: string;
+}
+
+interface GestureState {
+  initialDist: number;
+  initialAngle: number;
+  initialMidX: number;
+  initialMidY: number;
+  startZoom: number;
+  startPanX: number;
+  startPanY: number;
+  startRotation: number;
+}
+
 export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }: UseDrawingCanvasOptions) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  // Setiap tab (dokumen) punya "penyimpanan" sendiri: layer, riwayat undo, zoom —
-  // semuanya tetap ada di memori walau tab-nya lagi nggak aktif.
   const tabStoresRef = useRef<Map<string, TabStore>>(new Map());
-
-  // Track tab IDs yang baru saja di-init di siklus render ini,
-  // supaya effect sync-back tidak menimpa store baru dengan state kosong.
   const justInitializedRef = useRef<Set<string>>(new Set());
 
   const [layers, setLayers] = useState<LayerMeta[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+
+  // Transform states
   const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const [rotation, setRotation] = useState(0);
+
   const zoomRef = useRef(1);
-  const zoomAnchor = useRef<ZoomAnchor | null>(null);
+  const panXRef = useRef(0);
+  const panYRef = useRef(0);
+  const rotationRef = useRef(0);
 
   const isDrawing = useRef(false);
   const lastPoint = useRef<StrokePoint | null>(null);
-  const isPanning = useRef(false);
-  const panStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+  const isMousePanning = useRef(false);
+  const mousePanStart = useRef({ clientX: 0, clientY: 0, startPanX: 0, startPanY: 0 });
   const prevActiveTabIdRef = useRef<string | null>(null);
+
+  // Multi-touch gestures
+  const activePointers = useRef<Map<number, PointerInfo>>(new Map());
+  const isGestureActive = useRef(false);
+  const ignoreUntilAllUp = useRef(false);
+  const strokePreSnapshot = useRef<ImageData | null>(null);
+  const gestureState = useRef<GestureState | null>(null);
 
   function getActiveStore(): TabStore | undefined {
     return activeTabId ? tabStoresRef.current.get(activeTabId) : undefined;
@@ -250,9 +271,31 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
+  useEffect(() => {
+    panXRef.current = panX;
+  }, [panX]);
+  useEffect(() => {
+    panYRef.current = panY;
+  }, [panY]);
+  useEffect(() => {
+    rotationRef.current = rotation;
+  }, [rotation]);
 
-  // Inisialisasi store buat tab baru, buang store tab yang udah ditutup,
-  // dan tampilkan isi tab yang sedang aktif ke kanvas.
+  function calculateFit(tabWidth: number, tabHeight: number) {
+    const viewport = viewportRef.current;
+    if (!viewport) return { zoom: 1, panX: 0, panY: 0, rotation: 0 };
+    const { width: vw, height: vh } = viewport.getBoundingClientRect();
+    const pad = 36;
+    const fit = Math.min((vw - pad) / tabWidth, (vh - pad) / tabHeight, 1);
+    return {
+      zoom: fit > 0 ? fit : 1,
+      panX: 0,
+      panY: 0,
+      rotation: 0,
+    };
+  }
+
+  // Inisialisasi store buat tab baru, buang store tab yang udah ditutup
   useEffect(() => {
     for (const tab of tabs) {
       if (tabStoresRef.current.has(tab.id)) continue;
@@ -267,18 +310,11 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
       }
       const layerOneCanvas = createLayerCanvas(tab.width, tab.height);
 
-      let fitZoom = 1;
-      const viewport = viewportRef.current;
-      if (viewport) {
-        const { width, height } = viewport.getBoundingClientRect();
-        const fit = Math.min((width - 48) / tab.width, (height - 48) / tab.height, 1);
-        fitZoom = fit > 0 ? fit : 1;
-      }
+      const fit = calculateFit(tab.width, tab.height);
 
       tabStoresRef.current.set(tab.id, {
         width: tab.width,
         height: tab.height,
-        // Index 0 = paling atas (Layer 1), index terakhir = paling bawah (Background)
         layers: [
           { id: layerOneId, name: "Layer 1", visible: true, locked: false },
           { id: backgroundId, name: "Background", visible: true, locked: false },
@@ -289,7 +325,10 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
           [backgroundId, backgroundCanvas],
         ]),
         history: new Map(),
-        zoom: fitZoom,
+        zoom: fit.zoom,
+        panX: fit.panX,
+        panY: fit.panY,
+        rotation: fit.rotation,
       });
       justInitializedRef.current.add(tab.id);
     }
@@ -300,16 +339,16 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
       }
     }
 
-    // Simpan dulu state tab yang baru saja ditinggalkan (kalau memang lagi pindah tab),
-    // SEBELUM memuat data tab yang baru — supaya layers/activeLayerId/zoom yang masih
-    // "milik" tab lama tidak ketiban ke tab yang baru aktif.
     const prevId = prevActiveTabIdRef.current;
     if (prevId && prevId !== activeTabId) {
       const prevStore = tabStoresRef.current.get(prevId);
       if (prevStore) {
         prevStore.layers = layers;
         prevStore.activeLayerId = activeLayerId;
-        prevStore.zoom = zoom;
+        prevStore.zoom = zoomRef.current;
+        prevStore.panX = panXRef.current;
+        prevStore.panY = panYRef.current;
+        prevStore.rotation = rotationRef.current;
       }
     }
 
@@ -327,6 +366,9 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
       setLayers(store.layers);
       setActiveLayerId(store.activeLayerId);
       setZoom(store.zoom);
+      setPanX(store.panX);
+      setPanY(store.panY);
+      setRotation(store.rotation);
     }
     prevActiveTabIdRef.current = activeTabId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -355,11 +397,7 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, activeTabId]);
 
-  // Simpan balik layers/activeLayerId ke store tab yang aktif setiap kali beneran berubah
-  // (bukan gara-gara pindah tab — itu sudah ditangani terpisah di efek inisialisasi tab).
   useEffect(() => {
-    // Jangan timpa store yang baru saja diinisialisasi — pada render pertama,
-    // `layers` masih [] (state awal) sementara store sudah punya layer default.
     if (activeTabId && justInitializedRef.current.has(activeTabId)) {
       justInitializedRef.current.delete(activeTabId);
       return;
@@ -374,12 +412,16 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
 
   useEffect(() => {
     const store = getActiveStore();
-    if (store) store.zoom = zoom;
+    if (store) {
+      store.zoom = zoom;
+      store.panX = panX;
+      store.panY = panY;
+      store.rotation = rotation;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom]);
+  }, [zoom, panX, panY, rotation]);
 
-  // --- Manajemen layer (semuanya baca/tulis ke store tab yang aktif) ---
-
+  // --- Layer Management ---
   function addLayer() {
     const store = getActiveStore();
     if (!store) return;
@@ -399,8 +441,6 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     const deletedLayer = layers.find((l) => l.id === id);
     let next = layers.filter((l) => l.id !== id);
 
-    // Selalu harus ada satu layer "Background" — kalau yang dihapus itu Background,
-    // layer paling bawah yang tersisa (index terakhir) mengambil alih nama itu.
     if (deletedLayer?.name === "Background" && next.length > 0) {
       const bottomIndex = next.length - 1;
       next = next.map((l, i) => (i === bottomIndex ? { ...l, name: "Background" } : l));
@@ -459,7 +499,7 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
       try {
         ctx.drawImage(image, x, y, w, h);
       } catch {
-        // Gambar lintas-origin tanpa izin CORS bisa gagal digambar ke kanvas; diamkan saja.
+        // Ignored
       }
     }
     store.layerCanvases.set(id, layerCanvas);
@@ -467,87 +507,35 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     setActiveLayerId(id);
   }
 
-  // --- Zoom (scroll wheel, ke arah kursor) + pan (middle-click drag) ---
-
-  useLayoutEffect(() => {
-    const canvas = canvasRef.current;
+  // --- Exact Coordinate Transformation (Screen -> Document Coordinates) ---
+  function docPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
     const viewport = viewportRef.current;
     const store = getActiveStore();
-    if (!canvas || !store) return;
+    if (!viewport || !store) return { x: 0, y: 0 };
 
-    canvas.style.width = `${store.width * zoom}px`;
-    canvas.style.height = `${store.height * zoom}px`;
+    const vRect = viewport.getBoundingClientRect();
+    const viewCenterX = vRect.left + vRect.width / 2;
+    const viewCenterY = vRect.top + vRect.height / 2;
 
-    const anchor = zoomAnchor.current;
-    if (anchor && viewport) {
-      const canvasRect = canvas.getBoundingClientRect();
-      const newCursorX = anchor.docX * zoom;
-      const newCursorY = anchor.docY * zoom;
-      const desiredLeft = anchor.clientX - newCursorX;
-      const desiredTop = anchor.clientY - newCursorY;
-      viewport.scrollLeft += canvasRect.left - desiredLeft;
-      viewport.scrollTop += canvasRect.top - desiredTop;
-      zoomAnchor.current = null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, activeTabId]);
+    const canvasCenterX = viewCenterX + panXRef.current;
+    const canvasCenterY = viewCenterY + panYRef.current;
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    const canvas = canvasRef.current;
-    if (!viewport || !canvas) return;
+    const vx = clientX - canvasCenterX;
+    const vy = clientY - canvasCenterY;
 
-    function onWheel(e: WheelEvent) {
-      e.preventDefault();
-      const currentCanvas = canvasRef.current;
-      if (!currentCanvas) return;
+    const rad = (rotationRef.current * Math.PI) / 180;
+    const rotX = vx * Math.cos(-rad) - vy * Math.sin(-rad);
+    const rotY = vx * Math.sin(-rad) + vy * Math.cos(-rad);
 
-      const currentZoom = zoomRef.current;
-      const rect = currentCanvas.getBoundingClientRect();
-      const docX = (e.clientX - rect.left) / currentZoom;
-      const docY = (e.clientY - rect.top) / currentZoom;
+    const curZoom = zoomRef.current;
+    const unscaledX = rotX / curZoom;
+    const unscaledY = rotY / curZoom;
 
-      const factor = Math.exp(-e.deltaY * 0.001);
-      const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, currentZoom * factor));
-
-      zoomAnchor.current = { docX, docY, clientX: e.clientX, clientY: e.clientY };
-      setZoom(nextZoom);
-    }
-
-    viewport.addEventListener("wheel", onWheel, { passive: false });
-    return () => viewport.removeEventListener("wheel", onWheel);
-  }, []);
-
-  function handlePanMove(e: PointerEvent) {
-    if (!isPanning.current) return;
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    viewport.scrollLeft = panStart.current.scrollLeft - (e.clientX - panStart.current.x);
-    viewport.scrollTop = panStart.current.scrollTop - (e.clientY - panStart.current.y);
-  }
-
-  function handlePanEnd() {
-    isPanning.current = false;
-    window.removeEventListener("pointermove", handlePanMove);
-    window.removeEventListener("pointerup", handlePanEnd);
-  }
-
-  // --- Konversi koordinat layar -> koordinat dokumen ---
-
-  function docPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
     return {
-      x: (clientX - rect.left) / zoomRef.current,
-      y: (clientY - rect.top) / zoomRef.current,
+      x: unscaledX + store.width / 2,
+      y: unscaledY + store.height / 2,
     };
   }
-
-  const pointFromEvent = (e: ReactPointerEvent<HTMLCanvasElement>): StrokePoint => {
-    const { x, y } = docPointFromClient(e.clientX, e.clientY);
-    return { x, y, pressure: e.pressure > 0 ? e.pressure : 0.5 };
-  };
 
   const isDrawable = tool === "brush" || tool === "eraser";
 
@@ -563,16 +551,16 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     store.history.set(activeLayerId, stack);
   }
 
-  function handleBucketFill(e: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleBucketFill(clientX: number, clientY: number) {
     const store = getActiveStore();
     if (!store || !activeLayerId) return;
     const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
-    if (activeLayerMeta?.locked) return;
+    if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
     const layerCanvas = store.layerCanvases.get(activeLayerId);
     const ctx = layerCanvas?.getContext("2d");
     if (!ctx || !layerCanvas) return;
 
-    const point = pointFromEvent(e);
+    const point = docPointFromClient(clientX, clientY);
     const dpr = window.devicePixelRatio || 1;
     const px = Math.floor(point.x * dpr);
     const py = Math.floor(point.y * dpr);
@@ -587,83 +575,302 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     recomposite();
   }
 
-  function handleEyedropperPick(e: ReactPointerEvent<HTMLCanvasElement>) {
+  function handleEyedropperPick(clientX: number, clientY: number) {
     const ctx = ctxRef.current;
-    const canvas = canvasRef.current;
-    if (!ctx || !canvas) return;
+    const store = getActiveStore();
+    if (!ctx || !store) return;
 
-    const point = pointFromEvent(e);
+    const point = docPointFromClient(clientX, clientY);
     const dpr = window.devicePixelRatio || 1;
     const px = Math.floor(point.x * dpr);
     const py = Math.floor(point.y * dpr);
-    if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) return;
+    if (px < 0 || py < 0 || px >= store.width * dpr || py >= store.height * dpr) return;
 
     const pixel = ctx.getImageData(px, py, 1, 1).data;
     onColorPick?.(rgbToHsl(pixel[0], pixel[1], pixel[2]));
   }
 
-  const handlePointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (e.button === 1) {
-      e.preventDefault();
-      const viewport = viewportRef.current;
-      isPanning.current = true;
-      panStart.current = {
-        x: e.clientX,
-        y: e.clientY,
-        scrollLeft: viewport?.scrollLeft ?? 0,
-        scrollTop: viewport?.scrollTop ?? 0,
-      };
-      window.addEventListener("pointermove", handlePanMove);
-      window.addEventListener("pointerup", handlePanEnd);
-      return;
-    }
-
-    if (e.button !== 0) return;
-
-    if (tool === "bucket") {
-      handleBucketFill(e);
-      return;
-    }
-
-    if (tool === "eyedropper") {
-      handleEyedropperPick(e);
-      return;
-    }
-
-    if (!isDrawable || !activeLayerId) return;
-    const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
-    if (activeLayerMeta?.locked) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    pushHistory();
-    isDrawing.current = true;
-    lastPoint.current = pointFromEvent(e);
-  };
-
-  const handlePointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawable || !isDrawing.current || !activeLayerId) return;
+  function drawStrokeSegment(from: StrokePoint, to: StrokePoint) {
     const store = getActiveStore();
-    const layerCanvas = store?.layerCanvases.get(activeLayerId);
+    if (!store || !activeLayerId) return;
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
     const ctx = layerCanvas?.getContext("2d");
-    const last = lastPoint.current;
-    if (!ctx || !last) return;
+    if (!ctx) return;
 
-    const point = pointFromEvent(e);
     ctx.globalCompositeOperation = tool === "eraser" ? "destination-out" : "source-over";
     ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1, 6 * (0.4 + point.pressure));
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1, 6 * (0.4 + to.pressure));
+
     ctx.beginPath();
-    ctx.moveTo(last.x, last.y);
-    ctx.lineTo(point.x, point.y);
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
     ctx.stroke();
 
-    lastPoint.current = point;
     recomposite();
+  }
+
+  // --- Multi-Touch Gesture & Pointer Handlers ---
+  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+
+    activePointers.current.set(e.pointerId, {
+      id: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      pointerType: e.pointerType,
+    });
+
+    if (ignoreUntilAllUp.current) {
+      return;
+    }
+
+    // Mouse middle click or Move tool -> desktop mouse pan
+    if (e.pointerType === "mouse" && (e.button === 1 || tool === "move")) {
+      isMousePanning.current = true;
+      mousePanStart.current = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        startPanX: panXRef.current,
+        startPanY: panYRef.current,
+      };
+      return;
+    }
+
+    // Multi-touch: 2 or more fingers detected (Ibis Paint gesture)
+    if (activePointers.current.size >= 2) {
+      // Revert initial touch mark if finger 1 started drawing
+      if (isDrawing.current) {
+        isDrawing.current = false;
+        lastPoint.current = null;
+        if (strokePreSnapshot.current) {
+          const store = getActiveStore();
+          if (store && activeLayerId) {
+            const layerCanvas = store.layerCanvases.get(activeLayerId);
+            const ctx = layerCanvas?.getContext("2d");
+            if (ctx) {
+              ctx.putImageData(strokePreSnapshot.current, 0, 0);
+              recomposite();
+            }
+            const stack = store.history.get(activeLayerId);
+            if (stack && stack.length > 0) {
+              stack.pop();
+            }
+          }
+          strokePreSnapshot.current = null;
+        }
+      }
+
+      isGestureActive.current = true;
+      const pts = Array.from(activePointers.current.values());
+      const p1 = pts[0];
+      const p2 = pts[1];
+      const dist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+      const angle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX);
+      const midX = (p1.clientX + p2.clientX) / 2;
+      const midY = (p1.clientY + p2.clientY) / 2;
+
+      gestureState.current = {
+        initialDist: Math.max(dist, 10),
+        initialAngle: angle,
+        initialMidX: midX,
+        initialMidY: midY,
+        startZoom: zoomRef.current,
+        startPanX: panXRef.current,
+        startPanY: panYRef.current,
+        startRotation: rotationRef.current,
+      };
+      return;
+    }
+
+    // Single touch or left mouse click
+    if (activePointers.current.size === 1) {
+      if (e.button !== 0 && e.pointerType === "mouse") return;
+
+      const store = getActiveStore();
+      if (!store) return;
+
+      const docPt = docPointFromClient(e.clientX, e.clientY);
+      const isInsideCanvas =
+        docPt.x >= 0 && docPt.x <= store.width && docPt.y >= 0 && docPt.y <= store.height;
+
+      if (!isInsideCanvas) {
+        return;
+      }
+
+      if (tool === "bucket") {
+        handleBucketFill(e.clientX, e.clientY);
+        return;
+      }
+
+      if (tool === "eyedropper") {
+        handleEyedropperPick(e.clientX, e.clientY);
+        return;
+      }
+
+      if (!isDrawable || !activeLayerId) return;
+      const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
+      if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
+
+      const layerCanvas = store.layerCanvases.get(activeLayerId);
+      const ctx = layerCanvas?.getContext("2d");
+      if (ctx && layerCanvas) {
+        strokePreSnapshot.current = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
+      }
+
+      pushHistory();
+      isDrawing.current = true;
+      const startPt: StrokePoint = {
+        x: docPt.x,
+        y: docPt.y,
+        pressure: e.pressure > 0 ? e.pressure : 0.5,
+      };
+      lastPoint.current = startPt;
+      drawStrokeSegment(startPt, startPt);
+    }
   };
 
-  const handlePointerUp = () => {
-    isDrawing.current = false;
-    lastPoint.current = null;
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, {
+        id: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        pointerType: e.pointerType,
+      });
+    }
+
+    // Mouse panning
+    if (isMousePanning.current) {
+      const deltaX = e.clientX - mousePanStart.current.clientX;
+      const deltaY = e.clientY - mousePanStart.current.clientY;
+      setPanX(mousePanStart.current.startPanX + deltaX);
+      setPanY(mousePanStart.current.startPanY + deltaY);
+      return;
+    }
+
+    // 2-Finger Gestures (Pinch zoom, Pan, Rotate paper)
+    if (isGestureActive.current && activePointers.current.size >= 2) {
+      const pts = Array.from(activePointers.current.values());
+      const p1 = pts[0];
+      const p2 = pts[1];
+      const dist = Math.hypot(p2.clientX - p1.clientX, p2.clientY - p1.clientY);
+      const angle = Math.atan2(p2.clientY - p1.clientY, p2.clientX - p1.clientX);
+      const midX = (p1.clientX + p2.clientX) / 2;
+      const midY = (p1.clientY + p2.clientY) / 2;
+
+      const gs = gestureState.current;
+      if (!gs) return;
+
+      const scaleFactor = dist / gs.initialDist;
+      const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, gs.startZoom * scaleFactor));
+
+      const angleDiffDeg = ((angle - gs.initialAngle) * 180) / Math.PI;
+      let newRotation = (gs.startRotation + angleDiffDeg) % 360;
+      const normalizedRot = ((newRotation % 360) + 360) % 360;
+      if (normalizedRot < 3.5 || normalizedRot > 356.5) newRotation = 0;
+      else if (Math.abs(normalizedRot - 90) < 3.5) newRotation = 90;
+      else if (Math.abs(normalizedRot - 180) < 3.5) newRotation = 180;
+      else if (Math.abs(normalizedRot - 270) < 3.5) newRotation = 270;
+
+      const deltaMidX = midX - gs.initialMidX;
+      const deltaMidY = midY - gs.initialMidY;
+
+      const viewport = viewportRef.current;
+      if (viewport) {
+        const vRect = viewport.getBoundingClientRect();
+        const viewCenterX = vRect.left + vRect.width / 2;
+        const viewCenterY = vRect.top + vRect.height / 2;
+
+        const vx = gs.initialMidX - (viewCenterX + gs.startPanX);
+        const vy = gs.initialMidY - (viewCenterY + gs.startPanY);
+        const zoomRatio = newZoom / gs.startZoom;
+
+        const newPanX = gs.startPanX + deltaMidX + vx * (1 - zoomRatio);
+        const newPanY = gs.startPanY + deltaMidY + vy * (1 - zoomRatio);
+
+        setZoom(newZoom);
+        setRotation(newRotation);
+        setPanX(newPanX);
+        setPanY(newPanY);
+      }
+      return;
+    }
+
+    // Single pointer brush drawing
+    if (!ignoreUntilAllUp.current && isDrawing.current && activePointers.current.size === 1 && activeLayerId) {
+      const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
+      if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
+
+      const pt = docPointFromClient(e.clientX, e.clientY);
+      const currentPt: StrokePoint = {
+        x: pt.x,
+        y: pt.y,
+        pressure: e.pressure > 0 ? e.pressure : 0.5,
+      };
+
+      if (lastPoint.current) {
+        drawStrokeSegment(lastPoint.current, currentPt);
+      }
+      lastPoint.current = currentPt;
+    }
   };
+
+  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    activePointers.current.delete(e.pointerId);
+
+    if (isMousePanning.current) {
+      isMousePanning.current = false;
+    }
+
+    if (isGestureActive.current) {
+      if (activePointers.current.size < 2) {
+        isGestureActive.current = false;
+        gestureState.current = null;
+        ignoreUntilAllUp.current = true;
+      }
+    }
+
+    if (activePointers.current.size === 0) {
+      isDrawing.current = false;
+      lastPoint.current = null;
+      strokePreSnapshot.current = null;
+      ignoreUntilAllUp.current = false;
+    }
+  };
+
+  // Mouse wheel zoom
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      const curZoom = zoomRef.current;
+      const factor = Math.exp(-e.deltaY * 0.001);
+      const nextZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, curZoom * factor));
+
+      const vRect = viewport!.getBoundingClientRect();
+      const viewCenterX = vRect.left + vRect.width / 2;
+      const viewCenterY = vRect.top + vRect.height / 2;
+
+      const vx = e.clientX - (viewCenterX + panXRef.current);
+      const vy = e.clientY - (viewCenterY + panYRef.current);
+      const zoomRatio = nextZoom / curZoom;
+
+      const nextPanX = panXRef.current + vx * (1 - zoomRatio);
+      const nextPanY = panYRef.current + vy * (1 - zoomRatio);
+
+      setZoom(nextZoom);
+      setPanX(nextPanX);
+      setPanY(nextPanY);
+    }
+
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  }, []);
 
   function handleUndo() {
     const store = getActiveStore();
@@ -688,6 +895,20 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     link.click();
   }
 
+  function resetView() {
+    const store = getActiveStore();
+    if (!store) return;
+    const fit = calculateFit(store.width, store.height);
+    setZoom(fit.zoom);
+    setPanX(fit.panX);
+    setPanY(fit.panY);
+    setRotation(fit.rotation);
+  }
+
+  function resetRotation() {
+    setRotation(0);
+  }
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const isUndo = (e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "z";
@@ -708,9 +929,7 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLayerId, activeTabId]);
 
-  // --- Impor gambar: drag file dari luar / drag dari browser, dan paste ---
-
-  function handleDrop(e: ReactDragEvent<HTMLCanvasElement>) {
+  function handleDrop(e: ReactDragEvent<HTMLDivElement>) {
     e.preventDefault();
     if (!e.dataTransfer) return;
     const point = docPointFromClient(e.clientX, e.clientY);
@@ -729,12 +948,12 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
       loadImageFromUrl(uri)
         .then((img) => importImageAsLayer(img, point.x, point.y))
         .catch(() => {
-          // Kemungkinan besar dibatasi CORS oleh server sumber gambar — gagal secara diam-diam
+          // CORS error silently handled
         });
     }
   }
 
-  function handleDragOver(e: ReactDragEvent<HTMLCanvasElement>) {
+  function handleDragOver(e: ReactDragEvent<HTMLDivElement>) {
     e.preventDefault();
   }
 
@@ -776,5 +995,13 @@ export function useDrawingCanvas({ tool, color, tabs, activeTabId, onColorPick }
     reorderLayer,
     exportImage,
     undo: handleUndo,
+    zoom,
+    panX,
+    panY,
+    rotation,
+    resetView,
+    resetRotation,
+    canvasWidth: getActiveStore()?.width ?? 1080,
+    canvasHeight: getActiveStore()?.height ?? 1080,
   };
 }

@@ -17,15 +17,26 @@ function App() {
   const [tabs, setTabs] = useState<DocumentTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
-  // Cegah Ctrl+scroll / pinch-zoom browser nge-zoom seluruh halaman.
+  // Cegah Ctrl+scroll / pinch-zoom browser nge-zoom seluruh halaman & UI web.
   useEffect(() => {
-    function preventPageZoom(e: WheelEvent) {
+    function preventWheel(e: WheelEvent) {
       if (e.ctrlKey) {
         e.preventDefault();
       }
     }
-    window.addEventListener("wheel", preventPageZoom, { passive: false });
-    return () => window.removeEventListener("wheel", preventPageZoom);
+    function preventGesture(e: Event) {
+      e.preventDefault();
+    }
+    window.addEventListener("wheel", preventWheel, { passive: false });
+    document.addEventListener("gesturestart", preventGesture, { passive: false });
+    document.addEventListener("gesturechange", preventGesture, { passive: false });
+    document.addEventListener("gestureend", preventGesture, { passive: false });
+    return () => {
+      window.removeEventListener("wheel", preventWheel);
+      document.removeEventListener("gesturestart", preventGesture);
+      document.removeEventListener("gesturechange", preventGesture);
+      document.removeEventListener("gestureend", preventGesture);
+    };
   }, []);
 
   function addTab(size: DocumentSize, initialImage?: HTMLImageElement, title?: string) {

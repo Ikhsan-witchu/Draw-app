@@ -26,7 +26,7 @@ export default function NewImageDialog({ onCreate, onCancel }: NewImageDialogPro
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 sm:p-8 z-50" onClick={onCancel}>
       <div
-        className="w-full max-w-2xl bg-neutral-950 border border-neutral-800 rounded-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-2xl bg-neutral-950 border border-neutral-800 rounded-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto touch-pan-y"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-1">
