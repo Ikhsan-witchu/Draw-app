@@ -21,14 +21,18 @@ export function BrushSizeControl({
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
     if (open) {
       window.addEventListener("mousedown", handleClickOutside);
-      return () => window.removeEventListener("mousedown", handleClickOutside);
+      window.addEventListener("touchstart", handleClickOutside, { passive: true });
+      return () => {
+        window.removeEventListener("mousedown", handleClickOutside);
+        window.removeEventListener("touchstart", handleClickOutside);
+      };
     }
   }, [open]);
 
@@ -105,53 +109,73 @@ export function BrushSizeControl({
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-2 p-3 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl z-50 min-w-[220px] animate-slide-up">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-neutral-400 font-medium">Ukuran Pen/Brush</span>
-            <span className="text-xs font-mono text-white bg-neutral-800 px-2 py-0.5 rounded">
-              {size} px
-            </span>
-          </div>
-
-          {/* Slider */}
-          <input
-            type="range"
-            min={1}
-            max={100}
-            value={size}
-            onChange={(e) => onChange(Number(e.target.value))}
-            className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white mb-3"
+        <>
+          {/* Backdrop transparent click-catcher for mobile */}
+          <div
+            className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+            }}
           />
 
-          {/* Preset Buttons */}
-          <div className="grid grid-cols-6 gap-1 mb-3">
-            {PRESET_SIZES.map((preset) => (
-              <button
-                key={preset}
-                onClick={() => onChange(preset)}
-                className={`py-1 text-[10px] rounded transition-colors ${
-                  size === preset
-                    ? "bg-white text-neutral-950 font-bold"
-                    : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
-                }`}
-              >
-                {preset}
-              </button>
-            ))}
-          </div>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            className="absolute top-full right-0 mt-2 p-3 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl z-50 min-w-[220px] animate-slide-up pointer-events-auto"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-neutral-400 font-medium">Ukuran Pen/Brush</span>
+              <span className="text-xs font-mono text-white bg-neutral-800 px-2 py-0.5 rounded">
+                {size} px
+              </span>
+            </div>
 
-          {/* Live Circle Preview */}
-          <div className="h-16 bg-neutral-950 rounded-lg border border-neutral-800 flex items-center justify-center overflow-hidden">
-            <div
-              className="rounded-full transition-all"
-              style={{
-                width: `${Math.min(size, 56)}px`,
-                height: `${Math.min(size, 56)}px`,
-                backgroundColor: isEraser ? "#e5e5e5" : color,
-              }}
+            {/* Slider */}
+            <input
+              type="range"
+              min={1}
+              max={100}
+              value={size}
+              onChange={(e) => onChange(Number(e.target.value))}
+              className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white mb-3"
             />
+
+            {/* Preset Buttons */}
+            <div className="grid grid-cols-6 gap-1 mb-3">
+              {PRESET_SIZES.map((preset) => (
+                <button
+                  key={preset}
+                  onClick={() => onChange(preset)}
+                  className={`py-1 text-[10px] rounded transition-colors ${
+                    size === preset
+                      ? "bg-white text-neutral-950 font-bold"
+                      : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+            {/* Live Circle Preview */}
+            <div className="h-16 bg-neutral-950 rounded-lg border border-neutral-800 flex items-center justify-center overflow-hidden">
+              <div
+                className="rounded-full transition-all"
+                style={{
+                  width: `${Math.min(size, 56)}px`,
+                  height: `${Math.min(size, 56)}px`,
+                  backgroundColor: isEraser ? "#e5e5e5" : color,
+                }}
+              />
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

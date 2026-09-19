@@ -403,6 +403,36 @@ export default function DrawingWorkspace({
           onClose={() => setMobileBrushesOpen(false)}
         >
           <div className="p-3">
+            {/* Quick Brush Size Slider inside Mobile Sheet */}
+            <div className="mb-3.5 pb-3 border-b border-neutral-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-neutral-400 font-medium">Ukuran Brush</span>
+                <span className="text-xs font-mono text-white bg-neutral-800 px-2 py-0.5 rounded">
+                  {brushSize} px
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={100}
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="flex-1 h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                />
+                <div className="w-8 h-8 rounded-full border border-neutral-700 flex items-center justify-center shrink-0 bg-neutral-950">
+                  <div
+                    className="rounded-full"
+                    style={{
+                      width: `${Math.min(Math.max(brushSize, 4), 28)}px`,
+                      height: `${Math.min(Math.max(brushSize, 4), 28)}px`,
+                      backgroundColor: activeTool === "eraser" ? "#e5e5e5" : color,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
             <IconGridPanel
               items={BRUSHES}
               activeId={activeBrush}
@@ -451,7 +481,7 @@ export default function DrawingWorkspace({
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
       {/* Top bar */}
-      <div className="h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
+      <div className="relative z-30 h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
         <MenuBar menus={[fileMenu, workspaceMenu]} />
         <div className="flex items-center gap-3">
           <BrushSizeControl

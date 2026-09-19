@@ -63,7 +63,7 @@ export function MobileToolbar({
   return (
     <>
       {/* ── Top bar ────────────────────────────────────────────────────────── */}
-      <div className="h-12 shrink-0 bg-neutral-900/95 border-b border-neutral-800 flex items-center px-2 gap-1 backdrop-blur-sm">
+      <div className="relative z-30 h-12 shrink-0 bg-neutral-900/95 border-b border-neutral-800 flex items-center px-2 gap-1 backdrop-blur-sm">
 
         {/* Hamburger menu */}
         <button
@@ -133,7 +133,7 @@ export function MobileToolbar({
       />
 
       {/* ── Bottom toolbar ─────────────────────────────────────────────────── */}
-      <div className="shrink-0 bg-neutral-900/95 border-t border-neutral-800 backdrop-blur-sm pb-safe">
+      <div className="relative z-30 shrink-0 bg-neutral-900/95 border-t border-neutral-800 backdrop-blur-sm pb-safe">
         <div className="flex items-stretch h-14">
 
           {/* Tool strip — scrollable */}
@@ -205,16 +205,21 @@ export function MobileToolbar({
 
         {/* Active tool + brush size mini info strip */}
         {activeToolItem && (
-          <div className="flex items-center gap-2 px-3 pb-1">
+          <button
+            type="button"
+            onClick={onToggleBrushes}
+            className="flex items-center gap-2 px-3 pb-1 w-full text-left active:opacity-75 transition-opacity"
+            title="Buka Brush Palette & Pengaturan Ukuran"
+          >
             <activeToolItem.icon size={10} className="text-indigo-400 shrink-0" />
-            <span className="text-[10px] text-neutral-500 leading-none">
+            <span className="text-[10px] text-neutral-400 leading-none">
               {activeToolItem.label}
             </span>
-            <ChevronRight size={9} className="text-neutral-700 shrink-0" />
-            <span className="text-[10px] text-neutral-500 leading-none">
+            <ChevronRight size={9} className="text-neutral-600 shrink-0" />
+            <span className="text-[10px] text-indigo-400 font-medium leading-none">
               Size {brushSize}px
             </span>
-          </div>
+          </button>
         )}
       </div>
     </>
