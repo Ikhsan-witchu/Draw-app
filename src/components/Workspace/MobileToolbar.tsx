@@ -151,6 +151,27 @@ export function MobileBottomBar({
 
   return (
     <div className="relative z-30 shrink-0 bg-neutral-900/95 border-t border-neutral-800 backdrop-blur-sm pb-safe">
+      {/* Active tool + brush size mini info strip (positioned cleanly above tools row) */}
+      {activeToolItem && (
+        <button
+          type="button"
+          onClick={onToggleBrushes}
+          className="flex items-center gap-2 px-3 py-1 w-full text-left active:opacity-75 transition-opacity border-b border-neutral-800/60 bg-neutral-950/40"
+          title="Buka Brush Palette & Pengaturan Ukuran"
+        >
+          <activeToolItem.icon size={11} className="text-indigo-400 shrink-0" />
+          <span className="text-[10px] text-neutral-300 font-medium leading-none">
+            {activeToolItem.label}
+          </span>
+          <ChevronRight size={9} className="text-neutral-600 shrink-0" />
+          <span className="text-[10px] text-indigo-400 font-medium leading-none">
+            Size {brushSize}px
+          </span>
+          <span className="ml-auto text-[9px] text-neutral-500">Ubah</span>
+        </button>
+      )}
+
+      {/* Main Tools & Panel Toggles Row */}
       <div className="flex items-stretch h-14">
         {/* Tool strip — scrollable */}
         <div className="flex-1 flex items-center overflow-x-auto no-scrollbar px-1 gap-0.5 min-w-0">
@@ -217,25 +238,6 @@ export function MobileBottomBar({
           </button>
         </div>
       </div>
-
-      {/* Active tool + brush size mini info strip */}
-      {activeToolItem && (
-        <button
-          type="button"
-          onClick={onToggleBrushes}
-          className="flex items-center gap-2 px-3 pb-1 w-full text-left active:opacity-75 transition-opacity"
-          title="Buka Brush Palette & Pengaturan Ukuran"
-        >
-          <activeToolItem.icon size={10} className="text-indigo-400 shrink-0" />
-          <span className="text-[10px] text-neutral-400 leading-none">
-            {activeToolItem.label}
-          </span>
-          <ChevronRight size={9} className="text-neutral-600 shrink-0" />
-          <span className="text-[10px] text-indigo-400 font-medium leading-none">
-            Size {brushSize}px
-          </span>
-        </button>
-      )}
     </div>
   );
 }

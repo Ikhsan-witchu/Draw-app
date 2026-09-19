@@ -335,7 +335,7 @@ export default function DrawingWorkspace({
   // ════════════════════════════════════════
   if (isMobile) {
     return (
-      <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
+      <div className="flex flex-col h-full h-dvh overflow-hidden bg-neutral-950 select-none">
         {/* Top bar at the top */}
         <MobileTopBar
           activeTool={activeTool}
@@ -487,7 +487,7 @@ export default function DrawingWorkspace({
   // ── DESKTOP LAYOUT ──
   // ════════════════════════════════════════
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
+    <div className="flex flex-col h-full h-dvh overflow-hidden bg-neutral-950 select-none">
       {/* Top bar */}
       <div className="relative z-30 h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
         <MenuBar menus={[fileMenu, workspaceMenu]} />

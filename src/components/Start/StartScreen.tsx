@@ -17,7 +17,7 @@ export default function StartScreen({ onCreateNew, onOpenImage }: StartScreenPro
   }
 
   return (
-    <div className="h-screen w-screen bg-neutral-950 flex flex-col items-center justify-center p-6 sm:p-8 overflow-hidden relative select-none">
+    <div className="h-full h-dvh w-full bg-neutral-950 flex flex-col items-center justify-center p-6 sm:p-8 overflow-hidden relative select-none">
 
       {/* ── Background dot grid ── */}
       <div
