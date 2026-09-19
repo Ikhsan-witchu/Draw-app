@@ -11,12 +11,16 @@ import {
   Save,
 } from "lucide-react";
 import type { ToolItem } from "./types";
+import { BrushSizeControl } from "./BrushSizeControl";
 
 interface MobileToolbarProps {
   // Tool selection
   tools: ToolItem[];
   activeTool: string;
   onSelectTool: (id: string) => void;
+  // Brush size
+  brushSize: number;
+  onBrushSizeChange: (size: number) => void;
   // Actions
   onUndo: () => void;
   onSave: () => void;
@@ -37,6 +41,8 @@ export function MobileToolbar({
   tools,
   activeTool,
   onSelectTool,
+  brushSize,
+  onBrushSizeChange,
   onUndo,
   onSave,
   onNewFile,
@@ -60,7 +66,7 @@ export function MobileToolbar({
   return (
     <>
       {/* ── Top bar ── */}
-      <div className="h-11 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center px-2 gap-1">
+      <div className="h-11 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center px-2 gap-1.5">
         {/* Hamburger */}
         <button
           onClick={() => setMenuOpen((p) => !p)}
@@ -70,21 +76,31 @@ export function MobileToolbar({
         </button>
 
         {/* Tab title */}
-        <span className="flex-1 text-xs text-neutral-300 truncate text-center">
+        <span className="flex-1 text-xs text-neutral-300 truncate text-center font-medium">
           {tabTitle}
         </span>
 
         {/* Quick actions */}
         <button
           onClick={onUndo}
-          className="p-2 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
+          className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
           title="Undo"
         >
           <Undo2 size={16} />
         </button>
+
+        {/* Brush Size Control */}
+        <BrushSizeControl
+          size={brushSize}
+          onChange={onBrushSizeChange}
+          color={color}
+          isEraser={activeTool === "eraser"}
+          compact={true}
+        />
+
         <button
           onClick={onSave}
-          className="p-2 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
+          className="p-1.5 rounded text-neutral-400 hover:text-white hover:bg-neutral-800"
           title="Save"
         >
           <Download size={16} />

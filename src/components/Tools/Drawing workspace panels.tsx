@@ -297,14 +297,12 @@ export default function DrawingWorkspaceDemo() {
     window.removeEventListener("mouseup", handleResizeEnd);
   }
 
-  function handleResizeStart(side: Side) {
-    return (e: React.MouseEvent<HTMLDivElement>) => {
-      resizingSide.current = side;
-      startX.current = e.clientX;
-      startWidth.current = side === "left" ? leftWidth : rightWidth;
-      window.addEventListener("mousemove", handleResizeMove);
-      window.addEventListener("mouseup", handleResizeEnd);
-    };
+  function handleResizeStart(side: Side, e: React.MouseEvent<HTMLDivElement>) {
+    resizingSide.current = side;
+    startX.current = e.clientX;
+    startWidth.current = side === "left" ? leftWidth : rightWidth;
+    window.addEventListener("mousemove", handleResizeMove);
+    window.addEventListener("mouseup", handleResizeEnd);
   }
 
   function handleDropPanel(side: Side, panelId: string, position: DropPosition) {
@@ -372,7 +370,7 @@ export default function DrawingWorkspaceDemo() {
         setDragOverSide={setDragOverSide}
       />
       <div
-        onMouseDown={handleResizeStart("left")}
+        onMouseDown={(e) => handleResizeStart("left", e)}
         className="w-1 cursor-col-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
       />
 
@@ -381,7 +379,7 @@ export default function DrawingWorkspaceDemo() {
       </div>
 
       <div
-        onMouseDown={handleResizeStart("right")}
+        onMouseDown={(e) => handleResizeStart("right", e)}
         className="w-1 cursor-col-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
       />
       <Sidebar

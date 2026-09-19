@@ -2,7 +2,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type DragEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import DrawingCanvas from "../Canvas/DrawingCanvas";
@@ -12,10 +11,11 @@ import { IconGridPanel } from "./IconGridPanel";
 import { MenuBar, type MenuDef } from "./MenuBar";
 import { HuePanel } from "./HuePanel";
 import { LayersPanel } from "./LayersPanel";
-import { PanelShell } from "./PanelShell";
 import { Sidebar } from "./Sidebar";
 import { MobileToolbar } from "./MobileToolbar";
 import { BottomSheet } from "./BottomSheet";
+import { BrushSizeControl } from "./BrushSizeControl";
+import { PanelRenderer } from "./PanelRenderer";
 import { TOOLS, BRUSHES } from "./toolsData";
 import {
   widthForColumns,
@@ -80,9 +80,10 @@ export default function DrawingWorkspace({
     layers: "bottom",
   });
 
-  // State fungsional: tool aktif, warna (hue/sat/val)
+  // State fungsional: tool aktif, warna (hue/sat/val), brush size
   const [activeTool, setActiveTool] = useState<string>(TOOLS[0]?.id ?? "brush");
   const [activeBrush, setActiveBrush] = useState<string>(BRUSHES[0]?.id ?? "pen");
+  const [brushSize, setBrushSize] = useState<number>(8);
   const [hue, setHue] = useState(200);
   const [sat, setSat] = useState(70);
   const [val, setVal] = useState(85);
@@ -90,6 +91,8 @@ export default function DrawingWorkspace({
 
   const drawing = useDrawingCanvas({
     tool: activeTool,
+    brushType: activeBrush,
+    brushSize: brushSize,
     color,
     tabs,
     activeTabId,
@@ -140,14 +143,12 @@ export default function DrawingWorkspace({
     window.removeEventListener("mouseup", handleResizeEnd);
   }
 
-  function handleResizeStart(zone: DockZone) {
-    return (e: ReactMouseEvent<HTMLDivElement>) => {
-      resizingZone.current = zone;
-      startPos.current = zone === "bottom" ? e.clientY : e.clientX;
-      startSize.current = zone === "left" ? leftWidth : zone === "right" ? rightWidth : bottomHeight;
-      window.addEventListener("mousemove", handleResizeMove);
-      window.addEventListener("mouseup", handleResizeEnd);
-    };
+  function handleResizeStart(zone: DockZone, e: ReactMouseEvent<HTMLDivElement>) {
+    resizingZone.current = zone;
+    startPos.current = zone === "bottom" ? e.clientY : e.clientX;
+    startSize.current = zone === "left" ? leftWidth : zone === "right" ? rightWidth : bottomHeight;
+    window.addEventListener("mousemove", handleResizeMove);
+    window.addEventListener("mouseup", handleResizeEnd);
   }
 
   function handleDropPanel(zone: DockZone, panelId: PanelId, position: DropPosition) {
@@ -198,70 +199,38 @@ export default function DrawingWorkspace({
   }
 
   function renderPanel(id: PanelId) {
-    const common = {
-      dimmed: dragPanel === id,
-      onDragStart: (e: DragEvent<HTMLDivElement>) => {
-        e.dataTransfer.setData("text/plain", id);
-        e.dataTransfer.effectAllowed = "move";
-        setDragPanel(id);
-      },
-      onDragEnd: () => setDragPanel(null),
-    };
-
-    if (id === "tools") {
-      return (
-        <PanelShell title="Tools" {...common}>
-          <IconGridPanel items={TOOLS} activeId={activeTool} onSelect={setActiveTool} />
-        </PanelShell>
-      );
-    }
-    if (id === "brushes") {
-      return (
-        <PanelShell title="Brush Palette" {...common}>
-          <IconGridPanel
-            items={BRUSHES}
-            activeId={activeBrush}
-            onSelect={setActiveBrush}
-            itemSize={BRUSH_ITEM_SIZE}
-            iconSize={18}
-            gap={BRUSH_GRID_GAP}
-          />
-        </PanelShell>
-      );
-    }
-    if (id === "hue") {
-      return (
-        <PanelShell title="Color" {...common}>
-          <HuePanel
-            hue={hue}
-            sat={sat}
-            val={val}
-            onChange={(next) => {
-              setHue(next.hue);
-              setSat(next.sat);
-              setVal(next.val);
-            }}
-          />
-        </PanelShell>
-      );
-    }
-    if (id === "layers") {
-      return (
-        <PanelShell title="Layers" {...common}>
-          <LayersPanel
-            layers={drawing.layers}
-            activeLayerId={drawing.activeLayerId}
-            onAdd={drawing.addLayer}
-            onDelete={drawing.deleteLayer}
-            onToggleVisible={drawing.toggleLayerVisibility}
-            onToggleLock={drawing.toggleLayerLock}
-            onSelect={drawing.selectLayer}
-            onReorder={drawing.reorderLayer}
-          />
-        </PanelShell>
-      );
-    }
-    return null;
+    return (
+      <PanelRenderer
+        id={id}
+        dragPanel={dragPanel}
+        onDragStart={(e, panelId) => {
+          e.dataTransfer.setData("text/plain", panelId);
+          e.dataTransfer.effectAllowed = "move";
+          setDragPanel(panelId);
+        }}
+        onDragEnd={() => setDragPanel(null)}
+        activeTool={activeTool}
+        onSelectTool={setActiveTool}
+        activeBrush={activeBrush}
+        onSelectBrush={setActiveBrush}
+        hue={hue}
+        sat={sat}
+        val={val}
+        onColorChange={(next) => {
+          setHue(next.hue);
+          setSat(next.sat);
+          setVal(next.val);
+        }}
+        layers={drawing.layers}
+        activeLayerId={drawing.activeLayerId}
+        onAddLayer={drawing.addLayer}
+        onDeleteLayer={drawing.deleteLayer}
+        onToggleLayerVisible={drawing.toggleLayerVisibility}
+        onToggleLayerLock={drawing.toggleLayerLock}
+        onSelectLayer={drawing.selectLayer}
+        onReorderLayer={drawing.reorderLayer}
+      />
+    );
   }
 
   // ── Desktop menu definitions ──
@@ -307,6 +276,8 @@ export default function DrawingWorkspace({
           tools={TOOLS}
           activeTool={activeTool}
           onSelectTool={setActiveTool}
+          brushSize={brushSize}
+          onBrushSizeChange={setBrushSize}
           onUndo={drawing.undo}
           onSave={() => drawing.exportImage()}
           onNewFile={() => setShowNewDialog(true)}
@@ -416,8 +387,17 @@ export default function DrawingWorkspace({
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
       {/* Top bar */}
-      <div className="h-12 shrink-0 bg-neutral-900 border-b border-neutral-800">
+      <div className="h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
         <MenuBar menus={[fileMenu, workspaceMenu]} />
+        <div className="flex items-center gap-3">
+          <BrushSizeControl
+            size={brushSize}
+            onChange={setBrushSize}
+            color={color}
+            isEraser={activeTool === "eraser"}
+            compact={false}
+          />
+        </div>
       </div>
 
       <input
@@ -440,7 +420,7 @@ export default function DrawingWorkspace({
           setDragOverZone={setDragOverZone}
         />
         <div
-          onMouseDown={handleResizeStart("left")}
+          onMouseDown={(e) => handleResizeStart("left", e)}
           className="w-1 cursor-col-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
         />
 
@@ -472,7 +452,7 @@ export default function DrawingWorkspace({
           </div>
 
           <div
-            onMouseDown={handleResizeStart("bottom")}
+            onMouseDown={(e) => handleResizeStart("bottom", e)}
             className="h-1 cursor-row-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
           />
           <Sidebar
@@ -488,7 +468,7 @@ export default function DrawingWorkspace({
         </div>
 
         <div
-          onMouseDown={handleResizeStart("right")}
+          onMouseDown={(e) => handleResizeStart("right", e)}
           className="w-1 cursor-col-resize bg-neutral-800 hover:bg-neutral-600 shrink-0"
         />
         <Sidebar
