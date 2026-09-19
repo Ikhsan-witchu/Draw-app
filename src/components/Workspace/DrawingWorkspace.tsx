@@ -12,7 +12,7 @@ import { MenuBar, type MenuDef } from "./MenuBar";
 import { HuePanel } from "./HuePanel";
 import { LayersPanel } from "./LayersPanel";
 import { Sidebar } from "./Sidebar";
-import { MobileToolbar } from "./MobileToolbar";
+import { MobileTopBar, MobileBottomBar } from "./MobileToolbar";
 import { BottomSheet } from "./BottomSheet";
 import { BrushSizeControl } from "./BrushSizeControl";
 import { PanelRenderer } from "./PanelRenderer";
@@ -336,10 +336,9 @@ export default function DrawingWorkspace({
   if (isMobile) {
     return (
       <div className="flex flex-col h-screen overflow-hidden bg-neutral-950 select-none">
-        <MobileToolbar
-          tools={TOOLS}
+        {/* Top bar at the top */}
+        <MobileTopBar
           activeTool={activeTool}
-          onSelectTool={setActiveTool}
           brushSize={brushSize}
           onBrushSizeChange={setBrushSize}
           onUndo={drawing.undo}
@@ -348,14 +347,11 @@ export default function DrawingWorkspace({
           onOpenFile={onOpenTabFile}
           onCloseTab={() => activeTabId && onCloseTab(activeTabId)}
           color={color}
-          onToggleColor={() => setMobileColorOpen((p) => !p)}
-          onToggleBrushes={() => setMobileBrushesOpen((p) => !p)}
-          onToggleLayers={() => setMobileLayersOpen((p) => !p)}
           tabTitle={activeTab?.title ?? ""}
         />
 
-        {/* Fullscreen canvas */}
-        <div className="flex-1 min-h-0">
+        {/* Fullscreen canvas in the middle */}
+        <div className="flex-1 min-h-0 relative">
           <DrawingCanvas
             viewportRef={drawing.viewportRef}
             canvasRef={drawing.canvasRef}
@@ -380,6 +376,18 @@ export default function DrawingWorkspace({
             canvasHeight={drawing.canvasHeight}
           />
         </div>
+
+        {/* Bottom toolbar at the bottom of the screen */}
+        <MobileBottomBar
+          tools={TOOLS}
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+          color={color}
+          onToggleColor={() => setMobileColorOpen((p) => !p)}
+          onToggleBrushes={() => setMobileBrushesOpen((p) => !p)}
+          onToggleLayers={() => setMobileLayersOpen((p) => !p)}
+          brushSize={brushSize}
+        />
 
         {/* Bottom sheets for panels */}
         <BottomSheet title="Color" open={mobileColorOpen} onClose={() => setMobileColorOpen(false)}>
