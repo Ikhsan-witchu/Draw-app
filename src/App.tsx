@@ -23,7 +23,12 @@ function nextAvailableTitle(existingTitles: string[]): string {
 }
 
 function App() {
+  // Bedakan reload halaman (sessionStorage masih ada) vs. buka tab baru setelah close
+  // sessionStorage bertahan saat F5/Ctrl+R, tapi otomatis dihapus saat tab ditutup.
+  const isPageReload = sessionStorage.getItem("draw_session_alive") === "1";
+
   const [tabs, setTabs] = useState<DocumentTab[]>(() => {
+    if (!isPageReload) return []; // tab baru → ke StartScreen
     const saved = loadActiveAppState();
     if (saved && Array.isArray(saved.tabs) && saved.tabs.length > 0) {
       return saved.tabs.map((t) => ({
@@ -37,6 +42,7 @@ function App() {
   });
 
   const [activeTabId, setActiveTabId] = useState<string | null>(() => {
+    if (!isPageReload) return null; // tab baru → ke StartScreen
     const saved = loadActiveAppState();
     if (saved && saved.activeTabId && saved.tabs?.some((t) => t.id === saved.activeTabId)) {
       return saved.activeTabId;
@@ -50,6 +56,11 @@ function App() {
   const [recentProject, setRecentProject] = useState<RecentProjectMeta | null>(() => {
     return loadRecentProject();
   });
+
+  // Tandai sesi ini sebagai aktif — bertahan selama tab tidak ditutup.
+  useEffect(() => {
+    sessionStorage.setItem("draw_session_alive", "1");
+  }, []);
 
   // Cegah Ctrl+scroll / pinch-zoom browser nge-zoom seluruh halaman & UI web.
   useEffect(() => {
