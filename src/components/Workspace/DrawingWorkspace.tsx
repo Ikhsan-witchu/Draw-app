@@ -2,6 +2,8 @@ import {
   useEffect,
   useRef,
   useState,
+  useMemo,
+  useCallback,
   type ChangeEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -187,29 +189,33 @@ export default function DrawingWorkspace({
     const saved = loadActiveAppState();
     return saved?.color?.val ?? 85;
   });
-  const color = `hsl(${hue}, ${sat}%, ${val}%)`;
+  const color = useMemo(() => `hsl(${hue}, ${sat}%, ${val}%)`, [hue, sat, val]);
 
-  // Sinkronisasi tool, warna, dan layout panel ke persistence
+  // Sinkronisasi tool, warna, dan layout panel ke persistence (didebounce 300ms agar resize/slider smooth)
   useEffect(() => {
-    const current = loadActiveAppState();
-    if (current) {
-      saveActiveAppState({
-        ...current,
-        activeTool,
-        activeBrush,
-        brushSize,
-        brushOpacity,
-        stabilizerStrength,
-        shapeFilled,
-        color: { hue, sat, val },
-        leftWidth,
-        rightWidth,
-        bottomHeight,
-        leftPanels,
-        rightPanels,
-        bottomPanels,
-      });
-    }
+    const timer = setTimeout(() => {
+      const current = loadActiveAppState();
+      if (current) {
+        saveActiveAppState({
+          ...current,
+          activeTool,
+          activeBrush,
+          brushSize,
+          brushOpacity,
+          stabilizerStrength,
+          shapeFilled,
+          color: { hue, sat, val },
+          leftWidth,
+          rightWidth,
+          bottomHeight,
+          leftPanels,
+          rightPanels,
+          bottomPanels,
+        });
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [
     activeTool,
     activeBrush,
@@ -228,6 +234,12 @@ export default function DrawingWorkspace({
     bottomPanels,
   ]);
 
+  const handleColorPick = useCallback((next: { hue: number; sat: number; val: number }) => {
+    setHue(next.hue);
+    setSat(next.sat);
+    setVal(next.val);
+  }, []);
+
   const drawing = useDrawingCanvas({
     tool: activeTool,
     brushType: activeBrush,
@@ -238,11 +250,7 @@ export default function DrawingWorkspace({
     color,
     tabs,
     activeTabId,
-    onColorPick: (next) => {
-      setHue(next.hue);
-      setSat(next.sat);
-      setVal(next.val);
-    },
+    onColorPick: handleColorPick,
   });
 
   const [showNewDialog, setShowNewDialog] = useState(false);
@@ -365,17 +373,23 @@ export default function DrawingWorkspace({
     }
   }
 
-  function renderPanel(id: PanelId) {
+  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, panelId: PanelId) => {
+    e.dataTransfer.setData("text/plain", panelId);
+    e.dataTransfer.effectAllowed = "move";
+    setDragPanel(panelId);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDragPanel(null);
+  }, []);
+
+  const renderPanel = useCallback((id: PanelId) => {
     return (
       <PanelRenderer
         id={id}
         dragPanel={dragPanel}
-        onDragStart={(e, panelId) => {
-          e.dataTransfer.setData("text/plain", panelId);
-          e.dataTransfer.effectAllowed = "move";
-          setDragPanel(panelId);
-        }}
-        onDragEnd={() => setDragPanel(null)}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         activeTool={activeTool}
         onSelectTool={setActiveTool}
         activeBrush={activeBrush}
@@ -389,11 +403,7 @@ export default function DrawingWorkspace({
         hue={hue}
         sat={sat}
         val={val}
-        onColorChange={(next) => {
-          setHue(next.hue);
-          setSat(next.sat);
-          setVal(next.val);
-        }}
+        onColorChange={handleColorPick}
         layers={drawing.layers}
         activeLayerId={drawing.activeLayerId}
         onAddLayer={drawing.addLayer}
@@ -406,7 +416,30 @@ export default function DrawingWorkspace({
         onLayerBlendModeChange={drawing.setLayerBlendMode}
       />
     );
-  }
+  }, [
+    dragPanel,
+    handleDragStart,
+    handleDragEnd,
+    activeTool,
+    activeBrush,
+    brushOpacity,
+    stabilizerStrength,
+    shapeFilled,
+    hue,
+    sat,
+    val,
+    handleColorPick,
+    drawing.layers,
+    drawing.activeLayerId,
+    drawing.addLayer,
+    drawing.deleteLayer,
+    drawing.toggleLayerVisibility,
+    drawing.toggleLayerLock,
+    drawing.selectLayer,
+    drawing.reorderLayer,
+    drawing.setLayerOpacity,
+    drawing.setLayerBlendMode,
+  ]);
 
   // ── Desktop menu definitions ──
   const fileMenu: MenuDef = {

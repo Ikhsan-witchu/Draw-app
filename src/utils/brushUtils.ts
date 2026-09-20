@@ -1,7 +1,4 @@
-// ─── Algoritma rendering per-tipe brush ──────────────────────────────────────
-//
-// Setiap fungsi menerima konteks layer canvas (OffscreenCanvas atau HTMLCanvas),
-// tidak memanggil recomposite — itu tanggung jawab pemanggil.
+import { hslStringToRgb } from "./canvasUtils";
 
 export type BrushPoint = { x: number; y: number; pressure: number };
 
@@ -17,20 +14,69 @@ function dist(a: BrushPoint, b: BrushPoint): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
+// In-memory cache agar tidak mem-parsing string warna yang sama berulang kali di setiap goresan
+const COLOR_CACHE = new Map<string, [number, number, number]>();
+let sharedColorCanvas: HTMLCanvasElement | null = null;
+let sharedColorCtx: CanvasRenderingContext2D | null = null;
+
 /**
  * Parse warna CSS menjadi komponen r, g, b (0–255).
- * Mendukung format hsl(...) dan rgb(...).
+ * Sangat dioptimalkan: cek cache -> cek format HSL langsung -> fallback canvas tunggal.
  */
 function parseColor(css: string): [number, number, number] {
-  // Buat elemen canvas sementara untuk parsing via browser
-  const tmp = document.createElement("canvas");
-  tmp.width = 1;
-  tmp.height = 1;
-  const ctx = tmp.getContext("2d")!;
-  ctx.fillStyle = css;
-  ctx.fillRect(0, 0, 1, 1);
-  const d = ctx.getImageData(0, 0, 1, 1).data;
-  return [d[0], d[1], d[2]];
+  const cached = COLOR_CACHE.get(css);
+  if (cached) return cached;
+
+  let parsed: [number, number, number];
+
+  // Draw App utamanya menggunakan format hsl(...)
+  if (css.startsWith("hsl")) {
+    parsed = hslStringToRgb(css);
+  } else if (css.startsWith("#")) {
+    // Hex format (#RGB / #RRGGBB)
+    const hex = css.slice(1);
+    if (hex.length === 3) {
+      parsed = [
+        parseInt(hex[0] + hex[0], 16) || 0,
+        parseInt(hex[1] + hex[1], 16) || 0,
+        parseInt(hex[2] + hex[2], 16) || 0,
+      ];
+    } else {
+      parsed = [
+        parseInt(hex.slice(0, 2), 16) || 0,
+        parseInt(hex.slice(2, 4), 16) || 0,
+        parseInt(hex.slice(4, 6), 16) || 0,
+      ];
+    }
+  } else if (css.startsWith("rgb")) {
+    const match = css.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/);
+    parsed = match
+      ? [Math.round(Number(match[1])), Math.round(Number(match[2])), Math.round(Number(match[3]))]
+      : [0, 0, 0];
+  } else {
+    // Fallback: gunakan 1 shared canvas singleton alih-alih createElement di setiap frame
+    if (!sharedColorCanvas) {
+      sharedColorCanvas = document.createElement("canvas");
+      sharedColorCanvas.width = 1;
+      sharedColorCanvas.height = 1;
+      sharedColorCtx = sharedColorCanvas.getContext("2d", { willReadFrequently: true });
+    }
+    if (sharedColorCtx) {
+      sharedColorCtx.fillStyle = css;
+      sharedColorCtx.fillRect(0, 0, 1, 1);
+      const d = sharedColorCtx.getImageData(0, 0, 1, 1).data;
+      parsed = [d[0], d[1], d[2]];
+    } else {
+      parsed = [0, 0, 0];
+    }
+  }
+
+  // Batasi ukuran cache agar tidak membengkak
+  if (COLOR_CACHE.size > 200) {
+    COLOR_CACHE.clear();
+  }
+  COLOR_CACHE.set(css, parsed);
+  return parsed;
 }
 
 // ── Pen ────────────────────────────────────────────────────────────────────────
@@ -173,6 +219,7 @@ export function drawFeather(
   const opFactor = Math.max(0, Math.min(1, opacity));
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+  const [cr, cg, cb] = isEraser ? [0, 0, 0] : parseColor(color);
 
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
@@ -184,7 +231,6 @@ export function drawFeather(
       ctx.globalAlpha = 0.06 * opFactor;
       ctx.fillStyle = "rgba(0,0,0,1)";
     } else {
-      const [cr, cg, cb] = parseColor(color);
       const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, `rgba(${cr},${cg},${cb},${0.30 * opFactor})`);
       grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${0.10 * opFactor})`);

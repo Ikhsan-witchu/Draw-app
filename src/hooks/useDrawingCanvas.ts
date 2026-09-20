@@ -1,6 +1,6 @@
 // ─── Hook utama: orchestrator kanvas drawing ──────────────────────────────────
 
-import { useRef, useState, useEffect, type DragEvent as ReactDragEvent } from "react";
+import { useRef, useState, useEffect, useCallback, type DragEvent as ReactDragEvent } from "react";
 import type { LayerMeta, TabStore, UseDrawingCanvasOptions } from "../types/drawing";
 import { MAX_HISTORY } from "../types/drawing";
 import {
@@ -531,7 +531,7 @@ export function useDrawingCanvas({
     store.history.set(activeLayerId, stack);
   }
 
-  function handleUndo() {
+  const handleUndo = useCallback(() => {
     const store = getActiveStore();
     if (!store || !activeLayerId) return;
 
@@ -546,7 +546,7 @@ export function useDrawingCanvas({
       recomposite();
       persistActiveLayerContent();
     }
-  }
+  }, [activeLayerId]);
 
   // ── Tool actions ──────────────────────────────────────────────────────────
   function handleBucketFill(clientX: number, clientY: number) {
@@ -778,7 +778,7 @@ export function useDrawingCanvas({
   }, [activeTabId]);
 
   // ── View controls ─────────────────────────────────────────────────────────
-  function resetView() {
+  const resetView = useCallback(() => {
     const store = getActiveStore();
     if (!store) return;
     const fit = calculateFit(store.width, store.height);
@@ -790,20 +790,20 @@ export function useDrawingCanvas({
     setPanX(fit.panX);
     setPanY(fit.panY);
     setRotation(fit.rotation);
-  }
+  }, [activeTabId]);
 
-  function resetRotation() {
+  const resetRotation = useCallback(() => {
     setRotation(0);
-  }
+  }, []);
 
-  function exportImage() {
+  const exportImage = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement("a");
     link.download = "drawing.png";
     link.href = canvas.toDataURL("image/png");
     link.click();
-  }
+  }, []);
 
   // ── Public API ─────────────────────────────────────────────────────────────
   return {
