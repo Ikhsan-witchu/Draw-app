@@ -1,4 +1,3 @@
-import React from "react";
 import { Sliders, Sparkles, Square, CheckSquare } from "lucide-react";
 
 interface BrushSettingsPanelProps {
