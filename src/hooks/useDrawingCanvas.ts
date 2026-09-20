@@ -117,10 +117,16 @@ export function useDrawingCanvas({
     if (!viewport) return { zoom: 1, panX: 0, panY: 0, rotation: 0 };
 
     const { width: vw, height: vh } = viewport.getBoundingClientRect();
-    const pad = 36;
-    const fit = Math.min((vw - pad) / tabWidth, (vh - pad) / tabHeight, 1);
+    if (vw <= 0 || vh <= 0 || !tabWidth || !tabHeight) {
+      return { zoom: 1, panX: 0, panY: 0, rotation: 0 };
+    }
 
-    return { zoom: fit > 0 ? fit : 1, panX: 0, panY: 0, rotation: 0 };
+    const scaleX = vw / tabWidth;
+    const scaleY = vh / tabHeight;
+    // Skala fit tepat menyentuh batas kiri-kanan (jika melebar) atau atas-bawah (jika meninggi)
+    const fitZoom = Math.min(scaleX, scaleY);
+
+    return { zoom: fitZoom > 0 ? fitZoom : 1, panX: 0, panY: 0, rotation: 0 };
   }
 
   // ── Inisialisasi & sinkronisasi tab store ─────────────────────────────────
@@ -191,6 +197,9 @@ export function useDrawingCanvas({
           bgCtx?.drawImage(tab.initialImage, 0, 0, tab.width, tab.height);
         }
 
+        const fit = calculateFit(tab.width, tab.height);
+        const hasViewport = Boolean(viewportRef.current && viewportRef.current.clientWidth > 0);
+
         tabStoresRef.current.set(tab.id, {
           width: tab.width,
           height: tab.height,
@@ -204,13 +213,13 @@ export function useDrawingCanvas({
             [backgroundId, backgroundCanvas],
           ]),
           history: new Map(),
-          zoom: 1,
+          zoom: hasViewport ? fit.zoom : 1,
           panX: 0,
           panY: 0,
           rotation: 0,
         });
 
-        // Tab baru selalu di-fit ke viewport setelah render pertama
+        // Tab baru selalu di-fit ke viewport agar pas menyentuh batas sidebar / bar
         needsFitRef.current.add(tab.id);
 
         if (tab.initialImage) {
@@ -270,36 +279,51 @@ export function useDrawingCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs, activeTabId]);
 
-  // ── Deferred fit-to-viewport ───────────────────────────────────────────────
-  // Viewport belum punya ukuran saat tab store dibuat (masih dalam render phase),
-  // jadi kita tunda fit hingga setelah paint berikutnya.
+  // ── Deferred fit-to-viewport via ResizeObserver ────────────────────────────
+  // RAF tidak cukup andal karena viewportRef bisa jadi belum mounted saat effect jalan.
+  // ResizeObserver fire tepat saat viewport punya ukuran nyata.
   useEffect(() => {
     if (!activeTabId) return;
     if (!needsFitRef.current.has(activeTabId)) return;
 
-    const raf = requestAnimationFrame(() => {
-      if (!needsFitRef.current.has(activeTabId)) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    // Coba langsung dulu — viewport mungkin sudah punya ukuran
+    const tryFit = () => {
       const store = tabStoresRef.current.get(activeTabId);
-      if (!store) return;
+      if (!store) return false;
+      const { width: vw, height: vh } = viewport.getBoundingClientRect();
+      if (vw === 0 || vh === 0) return false; // belum siap
 
-      const fit = calculateFit(store.width, store.height);
-      // Viewport bisa saja masih belum siap (mis. 0×0) → jangan terapkan
-      if (fit.zoom <= 0 || !viewportRef.current) return;
+      const scaleX = vw / store.width;
+      const scaleY = vh / store.height;
+      // Fit tepat menyentuh batas kiri-kanan (jika melebar) atau atas-bawah (jika meninggi)
+      const fitZoom = Math.min(scaleX, scaleY);
+      const safeZoom = fitZoom > 0 ? fitZoom : 1;
 
-      store.zoom = fit.zoom;
-      store.panX = fit.panX;
-      store.panY = fit.panY;
-      store.rotation = fit.rotation;
+      store.zoom = safeZoom;
+      store.panX = 0;
+      store.panY = 0;
+      store.rotation = 0;
 
-      setZoom(fit.zoom);
-      setPanX(fit.panX);
-      setPanY(fit.panY);
-      setRotation(fit.rotation);
+      setZoom(safeZoom);
+      setPanX(0);
+      setPanY(0);
+      setRotation(0);
 
       needsFitRef.current.delete(activeTabId);
-    });
+      return true;
+    };
 
-    return () => cancelAnimationFrame(raf);
+    if (tryFit()) return; // sudah berhasil, selesai
+
+    // Viewport belum siap → pantau dengan ResizeObserver
+    const ro = new ResizeObserver(() => {
+      if (tryFit()) ro.disconnect();
+    });
+    ro.observe(viewport);
+    return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, tabs]);
 
@@ -758,6 +782,10 @@ export function useDrawingCanvas({
     const store = getActiveStore();
     if (!store) return;
     const fit = calculateFit(store.width, store.height);
+    store.zoom = fit.zoom;
+    store.panX = fit.panX;
+    store.panY = fit.panY;
+    store.rotation = fit.rotation;
     setZoom(fit.zoom);
     setPanX(fit.panX);
     setPanY(fit.panY);

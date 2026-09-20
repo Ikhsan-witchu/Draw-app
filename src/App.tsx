@@ -95,32 +95,6 @@ function App() {
       initialImage,
     };
 
-    // Langsung catat ke persistence agar jika langsung reload tetap ke-restore
-    const current = loadActiveAppState();
-    const updatedTabs = [
-      ...(current?.tabs ?? []),
-      {
-        id,
-        title: tabTitle,
-        width: size.width,
-        height: size.height,
-        layers: [
-          { id: "layer-1", name: "Layer 1", visible: true, locked: false },
-          { id: "layer-bg", name: "Background", visible: true, locked: false },
-        ],
-        activeLayerId: "layer-1",
-        zoom: 1,
-        panX: 0,
-        panY: 0,
-        rotation: 0,
-      },
-    ];
-    saveActiveAppState({
-      ...current,
-      activeTabId: id,
-      tabs: updatedTabs,
-    });
-
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(id);
   }
