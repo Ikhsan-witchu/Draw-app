@@ -48,20 +48,47 @@ export function useDrawingCanvas({
   const justInitializedRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
 
-  const [layers, setLayers] = useState<LayerMeta[]>([]);
-  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
+  const [layers, setLayers] = useState<LayerMeta[]>(() => {
+    const saved = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+    const tab = saved?.tabs?.find((t) => t.id === activeTabId) ?? saved?.tabs?.[0];
+    if (tab?.layers && Array.isArray(tab.layers) && tab.layers.length > 0) {
+      return tab.layers;
+    }
+    return [];
+  });
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(() => {
+    const saved = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+    const tab = saved?.tabs?.find((t) => t.id === activeTabId) ?? saved?.tabs?.[0];
+    return tab?.activeLayerId ?? tab?.layers?.[0]?.id ?? null;
+  });
 
   // ── Transform state ────────────────────────────────────────────────────────
-  const [zoom, setZoom] = useState(1);
-  const [panX, setPanX] = useState(0);
-  const [panY, setPanY] = useState(0);
-  const [rotation, setRotation] = useState(0);
+  const [zoom, setZoom] = useState(() => {
+    const saved = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+    const tab = saved?.tabs?.find((t) => t.id === activeTabId) ?? saved?.tabs?.[0];
+    return tab?.zoom ?? 1;
+  });
+  const [panX, setPanX] = useState(() => {
+    const saved = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+    const tab = saved?.tabs?.find((t) => t.id === activeTabId) ?? saved?.tabs?.[0];
+    return tab?.panX ?? 0;
+  });
+  const [panY, setPanY] = useState(() => {
+    const saved = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+    const tab = saved?.tabs?.find((t) => t.id === activeTabId) ?? saved?.tabs?.[0];
+    return tab?.panY ?? 0;
+  });
+  const [rotation, setRotation] = useState(() => {
+    const saved = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+    const tab = saved?.tabs?.find((t) => t.id === activeTabId) ?? saved?.tabs?.[0];
+    return tab?.rotation ?? 0;
+  });
 
   // Refs untuk akses langsung dari event handler tanpa stale closure
-  const zoomRef = useRef(1);
-  const panXRef = useRef(0);
-  const panYRef = useRef(0);
-  const rotationRef = useRef(0);
+  const zoomRef = useRef(zoom);
+  const panXRef = useRef(panX);
+  const panYRef = useRef(panY);
+  const rotationRef = useRef(rotation);
 
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { panXRef.current = panX; }, [panX]);
@@ -117,18 +144,26 @@ export function useDrawingCanvas({
         });
 
         // Muat piksel layer dari IndexedDB secara asinkron
-        for (const l of persistedTab.layers) {
-          const lc = layerCanvasesMap.get(l.id);
-          if (lc) {
-            loadLayerCanvasBlob(tab.id, l.id).then((blob) => {
+        (async () => {
+          let hasLoadedAny = false;
+          for (const l of persistedTab.layers) {
+            const lc = layerCanvasesMap.get(l.id);
+            if (lc) {
+              const blob = await loadLayerCanvasBlob(tab.id, l.id);
               if (blob) {
-                applyBlobToCanvas(lc, blob).then(() => {
-                  recomposite();
-                });
+                await applyBlobToCanvas(lc, blob);
+                hasLoadedAny = true;
+                if (activeTabId === tab.id || !activeTabId) {
+                  recompositeRef.current();
+                }
               }
-            });
+            }
           }
-        }
+          if (hasLoadedAny && (activeTabId === tab.id || !activeTabId)) {
+            recompositeRef.current();
+            setLayers((prev) => [...prev]);
+          }
+        })();
       } else {
         // Tab baru biasa
         const backgroundId = generateId("layer");
@@ -195,8 +230,8 @@ export function useDrawingCanvas({
     const canvas = canvasRef.current;
     if (store && canvas) {
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = store.width * dpr;
-      canvas.height = store.height * dpr;
+      canvas.width = Math.round(store.width * dpr);
+      canvas.height = Math.round(store.height * dpr);
 
       const ctx = canvas.getContext("2d");
       if (ctx) {
@@ -210,6 +245,7 @@ export function useDrawingCanvas({
       setPanX(store.panX);
       setPanY(store.panY);
       setRotation(store.rotation);
+      recomposite();
     }
 
     prevActiveTabIdRef.current = activeTabId;
@@ -219,16 +255,38 @@ export function useDrawingCanvas({
 
   // ── Compositing: gabungkan semua layer yang visible ke main canvas ─────────
   function recomposite() {
-    const ctx = ctxRef.current;
     const store = getActiveStore();
-    if (!ctx || !store) return;
+    if (!store) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.round(store.width * dpr);
+    const targetH = Math.round(store.height * dpr);
+
+    if (canvas.width !== targetW || canvas.height !== targetH || !ctxRef.current) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.scale(dpr, dpr);
+        ctxRef.current = ctx;
+      }
+    }
+
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    const currentLayers = (store.layers && store.layers.length > 0) ? store.layers : layers;
+    if (!currentLayers || currentLayers.length === 0) return;
 
     ctx.clearRect(0, 0, store.width, store.height);
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, store.width, store.height);
 
-    for (let i = layers.length - 1; i >= 0; i--) {
-      const layer = layers[i];
+    for (let i = currentLayers.length - 1; i >= 0; i--) {
+      const layer = currentLayers[i];
       if (!layer.visible) continue;
       const layerCanvas = store.layerCanvases.get(layer.id);
       if (layerCanvas) {
@@ -236,6 +294,9 @@ export function useDrawingCanvas({
       }
     }
   }
+
+  const recompositeRef = useRef(recomposite);
+  recompositeRef.current = recomposite;
 
   useEffect(() => {
     recomposite();
@@ -650,7 +711,7 @@ export function useDrawingCanvas({
     undo: handleUndo,
 
     // Info dimensi kanvas aktif
-    canvasWidth: getActiveStore()?.width ?? 1080,
-    canvasHeight: getActiveStore()?.height ?? 1080,
+    canvasWidth: getActiveStore()?.width ?? tabs.find((t) => t.id === activeTabId)?.width ?? 1080,
+    canvasHeight: getActiveStore()?.height ?? tabs.find((t) => t.id === activeTabId)?.height ?? 1080,
   };
 }
