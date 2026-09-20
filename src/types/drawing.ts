@@ -11,6 +11,8 @@ export interface LayerMeta {
   name: string;
   visible: boolean;
   locked: boolean;
+  opacity?: number; // 0 - 100 (persen)
+  blendMode?: GlobalCompositeOperation;
 }
 
 export interface DocumentTab {
@@ -38,6 +40,9 @@ export interface UseDrawingCanvasOptions {
   tool: string;
   brushType?: string;
   brushSize?: number;
+  brushOpacity?: number; // 1 - 100
+  stabilizerStrength?: number; // 0 - 10
+  shapeFilled?: boolean;
   color: string;
   tabs: DocumentTab[];
   activeTabId: string | null;

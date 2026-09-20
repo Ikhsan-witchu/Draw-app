@@ -28,6 +28,9 @@ export interface PersistedAppState {
   activeTool?: string;
   activeBrush?: string;
   brushSize?: number;
+  brushOpacity?: number;
+  stabilizerStrength?: number;
+  shapeFilled?: boolean;
   color?: { hue: number; sat: number; val: number };
   leftWidth?: number;
   rightWidth?: number;

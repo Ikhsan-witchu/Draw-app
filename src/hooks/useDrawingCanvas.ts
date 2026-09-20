@@ -13,6 +13,12 @@ import {
 } from "../utils/canvasUtils";
 import { dispatchBrush } from "../utils/brushUtils";
 import {
+  drawShapeLine,
+  drawShapeRect,
+  drawShapeEllipse,
+  drawShapeGradient,
+} from "../utils/shapeUtils";
+import {
   saveLayerCanvasBlob,
   loadLayerCanvasBlob,
   applyBlobToCanvas,
@@ -35,6 +41,9 @@ export function useDrawingCanvas({
   tool,
   brushType = "pen",
   brushSize = 8,
+  brushOpacity = 100,
+  stabilizerStrength = 3,
+  shapeFilled = false,
   color,
   tabs,
   activeTabId,
@@ -290,9 +299,14 @@ export function useDrawingCanvas({
       if (!layer.visible) continue;
       const layerCanvas = store.layerCanvases.get(layer.id);
       if (layerCanvas) {
+        ctx.globalAlpha = (layer.opacity ?? 100) / 100;
+        ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
         ctx.drawImage(layerCanvas, 0, 0, store.width, store.height);
       }
     }
+
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
   }
 
   const recompositeRef = useRef(recomposite);
@@ -525,13 +539,56 @@ export function useDrawingCanvas({
     if (!ctx) return;
 
     const isEraser = tool === "eraser";
-    dispatchBrush(brushType, ctx, from, to, Math.max(1, brushSize), color, isEraser);
+    const opacityFactor = (brushOpacity ?? 100) / 100;
+    dispatchBrush(brushType, ctx, from, to, Math.max(1, brushSize), color, isEraser, opacityFactor);
     recomposite();
   }
 
+  const isShapeTool = ["line", "rectShape", "ellipseShape", "gradient"].includes(tool);
+  const isDrawable = tool === "brush" || tool === "eraser" || isShapeTool;
 
+  function renderShapeToContext(
+    targetCtx: CanvasRenderingContext2D,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    width: number,
+    height: number,
+  ) {
+    const opacityFactor = (brushOpacity ?? 100) / 100;
+    const currentSize = Math.max(1, brushSize);
 
-  const isDrawable = tool === "brush" || tool === "eraser";
+    if (tool === "line") {
+      drawShapeLine(targetCtx, from, to, currentSize, color, opacityFactor);
+    } else if (tool === "rectShape") {
+      drawShapeRect(targetCtx, from, to, currentSize, color, shapeFilled ?? false, opacityFactor);
+    } else if (tool === "ellipseShape") {
+      drawShapeEllipse(targetCtx, from, to, currentSize, color, shapeFilled ?? false, opacityFactor);
+    } else if (tool === "gradient") {
+      drawShapeGradient(targetCtx, from, to, width, height, color, false, opacityFactor);
+    }
+  }
+
+  function handleShapePreview(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const store = getActiveStore();
+    const ctx = ctxRef.current;
+    if (!store || !ctx) return;
+
+    recomposite();
+    renderShapeToContext(ctx, from, to, store.width, store.height);
+  }
+
+  function handleShapeCommit(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const store = getActiveStore();
+    if (!store || !activeLayerId) return;
+
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!ctx) return;
+
+    renderShapeToContext(ctx, from, to, store.width, store.height);
+    recomposite();
+    persistActiveLayerContent();
+  }
 
   // ── Layer manager ─────────────────────────────────────────────────────────
   const layerManager = useLayerManager({
@@ -572,11 +629,15 @@ export function useDrawingCanvas({
     layers,
     activeLayerId,
     isDrawable,
+    isShapeTool,
+    stabilizerStrength,
     docPointFromClient,
     pushHistory,
     drawStrokeSegment,
     handleBucketFill,
     handleEyedropperPick,
+    onShapePreview: handleShapePreview,
+    onShapeCommit: handleShapeCommit,
     recomposite,
     onStrokeComplete: persistActiveLayerContent,
   });
@@ -695,6 +756,8 @@ export function useDrawingCanvas({
     deleteLayer: layerManager.deleteLayer,
     toggleLayerVisibility: layerManager.toggleLayerVisibility,
     toggleLayerLock: layerManager.toggleLayerLock,
+    setLayerOpacity: layerManager.setLayerOpacity,
+    setLayerBlendMode: layerManager.setLayerBlendMode,
     selectLayer: layerManager.selectLayer,
     reorderLayer: layerManager.reorderLayer,
 

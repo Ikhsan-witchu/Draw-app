@@ -33,6 +33,7 @@ import { loadActiveAppState, saveActiveAppState } from "../../utils/persistence"
 const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
   tools: widthForColumns(1),
   brushes: widthForColumns(3, BRUSH_ITEM_SIZE, BRUSH_GRID_GAP, BRUSH_PANEL_PADDING),
+  brushSettings: 200,
   hue: 240,
   layers: 220,
 };
@@ -161,6 +162,18 @@ export default function DrawingWorkspace({
     const saved = loadActiveAppState();
     return saved?.brushSize ?? 8;
   });
+  const [brushOpacity, setBrushOpacity] = useState<number>(() => {
+    const saved = loadActiveAppState();
+    return saved?.brushOpacity ?? 100;
+  });
+  const [stabilizerStrength, setStabilizerStrength] = useState<number>(() => {
+    const saved = loadActiveAppState();
+    return saved?.stabilizerStrength ?? 3;
+  });
+  const [shapeFilled, setShapeFilled] = useState<boolean>(() => {
+    const saved = loadActiveAppState();
+    return saved?.shapeFilled ?? false;
+  });
   const [hue, setHue] = useState(() => {
     const saved = loadActiveAppState();
     return saved?.color?.hue ?? 200;
@@ -184,6 +197,9 @@ export default function DrawingWorkspace({
         activeTool,
         activeBrush,
         brushSize,
+        brushOpacity,
+        stabilizerStrength,
+        shapeFilled,
         color: { hue, sat, val },
         leftWidth,
         rightWidth,
@@ -197,6 +213,9 @@ export default function DrawingWorkspace({
     activeTool,
     activeBrush,
     brushSize,
+    brushOpacity,
+    stabilizerStrength,
+    shapeFilled,
     hue,
     sat,
     val,
@@ -212,6 +231,9 @@ export default function DrawingWorkspace({
     tool: activeTool,
     brushType: activeBrush,
     brushSize: brushSize,
+    brushOpacity,
+    stabilizerStrength,
+    shapeFilled,
     color,
     tabs,
     activeTabId,
@@ -357,6 +379,12 @@ export default function DrawingWorkspace({
         onSelectTool={setActiveTool}
         activeBrush={activeBrush}
         onSelectBrush={setActiveBrush}
+        brushOpacity={brushOpacity}
+        onBrushOpacityChange={setBrushOpacity}
+        stabilizerStrength={stabilizerStrength}
+        onStabilizerStrengthChange={setStabilizerStrength}
+        shapeFilled={shapeFilled}
+        onShapeFilledChange={setShapeFilled}
         hue={hue}
         sat={sat}
         val={val}
@@ -373,6 +401,8 @@ export default function DrawingWorkspace({
         onToggleLayerLock={drawing.toggleLayerLock}
         onSelectLayer={drawing.selectLayer}
         onReorderLayer={drawing.reorderLayer}
+        onLayerOpacityChange={drawing.setLayerOpacity}
+        onLayerBlendModeChange={drawing.setLayerBlendMode}
       />
     );
   }
@@ -397,6 +427,12 @@ export default function DrawingWorkspace({
         label: "Brush Palette",
         checked: isPanelVisible("brushes"),
         onToggle: () => togglePanelVisibility("brushes"),
+      },
+      {
+        type: "checkbox",
+        label: "Brush Settings",
+        checked: isPanelVisible("brushSettings"),
+        onToggle: () => togglePanelVisibility("brushSettings"),
       },
       { type: "checkbox", label: "Hue", checked: isPanelVisible("hue"), onToggle: () => togglePanelVisibility("hue") },
       {
@@ -523,6 +559,42 @@ export default function DrawingWorkspace({
               </div>
             </div>
 
+            {/* Mobile Brush Opacity Slider */}
+            <div className="mb-3 pb-3 border-b border-neutral-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-neutral-400 font-medium">Kerapatan / Opacity</span>
+                <span className="text-xs font-mono text-white bg-neutral-800 px-2 py-0.5 rounded">
+                  {brushOpacity}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={100}
+                value={brushOpacity}
+                onChange={(e) => setBrushOpacity(Number(e.target.value))}
+                className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
+            </div>
+
+            {/* Mobile Stabilizer Slider */}
+            <div className="mb-3.5 pb-3 border-b border-neutral-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-neutral-400 font-medium">Stabilizer (Penghalus)</span>
+                <span className="text-xs font-mono text-white bg-neutral-800 px-2 py-0.5 rounded">
+                  {stabilizerStrength === 0 ? "Off" : stabilizerStrength}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={10}
+                value={stabilizerStrength}
+                onChange={(e) => setStabilizerStrength(Number(e.target.value))}
+                className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
+            </div>
+
             <IconGridPanel
               items={BRUSHES}
               activeId={activeBrush}
@@ -548,6 +620,8 @@ export default function DrawingWorkspace({
               onToggleLock={drawing.toggleLayerLock}
               onSelect={drawing.selectLayer}
               onReorder={drawing.reorderLayer}
+              onOpacityChange={drawing.setLayerOpacity}
+              onBlendModeChange={drawing.setLayerBlendMode}
             />
           </div>
         </BottomSheet>

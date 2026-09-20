@@ -35,9 +35,18 @@ export function useLayerManager({
 
     const id = generateId("layer");
     const name = nextAvailableName(layers.map((l) => l.name), "Layer");
+    const newLayer: LayerMeta = {
+      id,
+      name,
+      visible: true,
+      locked: false,
+      opacity: 100,
+      blendMode: "source-over",
+    };
 
     store.layerCanvases.set(id, createLayerCanvas(store.width, store.height));
-    setLayers((prev) => [{ id, name, visible: true, locked: false }, ...prev]);
+    store.layers = [newLayer, ...(store.layers || [])];
+    setLayers((prev) => [newLayer, ...prev]);
     setActiveLayerId(id);
     onLayerStructureChange?.(undefined, id);
   }
@@ -57,21 +66,53 @@ export function useLayerManager({
 
     store.layerCanvases.delete(id);
     store.history.delete(id);
+    store.layers = next;
     setLayers(next);
 
     if (activeLayerId === id) {
       setActiveLayerId(next[0]?.id ?? null);
     }
+    recomposite();
     onLayerStructureChange?.(id, undefined);
   }
 
   function toggleLayerVisibility(id: string) {
+    const store = getActiveStore();
+    if (store) {
+      store.layers = store.layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l));
+    }
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
+    recomposite();
     onLayerStructureChange?.();
   }
 
   function toggleLayerLock(id: string) {
+    const store = getActiveStore();
+    if (store) {
+      store.layers = store.layers.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l));
+    }
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)));
+    onLayerStructureChange?.();
+  }
+
+  function setLayerOpacity(id: string, opacity: number) {
+    const clamped = Math.max(0, Math.min(100, Math.round(opacity)));
+    const store = getActiveStore();
+    if (store) {
+      store.layers = store.layers.map((l) => (l.id === id ? { ...l, opacity: clamped } : l));
+    }
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, opacity: clamped } : l)));
+    recomposite();
+    onLayerStructureChange?.();
+  }
+
+  function setLayerBlendMode(id: string, blendMode: GlobalCompositeOperation) {
+    const store = getActiveStore();
+    if (store) {
+      store.layers = store.layers.map((l) => (l.id === id ? { ...l, blendMode } : l));
+    }
+    setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, blendMode } : l)));
+    recomposite();
     onLayerStructureChange?.();
   }
 
@@ -93,8 +134,13 @@ export function useLayerManager({
       const insertIndex = position === "before" ? targetIndex : targetIndex + 1;
       const next = [...withoutDragged];
       next.splice(insertIndex, 0, dragged);
+      const store = getActiveStore();
+      if (store) {
+        store.layers = next;
+      }
       return next;
     });
+    recomposite();
     onLayerStructureChange?.();
   }
 
@@ -120,8 +166,18 @@ export function useLayerManager({
       }
     }
 
+    const newLayer: LayerMeta = {
+      id,
+      name,
+      visible: true,
+      locked: false,
+      opacity: 100,
+      blendMode: "source-over",
+    };
+
     store.layerCanvases.set(id, layerCanvas);
-    setLayers((prev) => [{ id, name, visible: true, locked: false }, ...prev]);
+    store.layers = [newLayer, ...(store.layers || [])];
+    setLayers((prev) => [newLayer, ...prev]);
     setActiveLayerId(id);
     recomposite();
     onLayerStructureChange?.(undefined, id);
@@ -144,6 +200,8 @@ export function useLayerManager({
     deleteLayer,
     toggleLayerVisibility,
     toggleLayerLock,
+    setLayerOpacity,
+    setLayerBlendMode,
     selectLayer,
     reorderLayer,
     importImageAsLayer,

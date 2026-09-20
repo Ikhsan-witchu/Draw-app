@@ -1,10 +1,9 @@
-// ─── Komponen perender panel dockable di workspace ────────────────────────────
-
 import type { DragEvent, ReactNode } from "react";
 import { PanelShell } from "./PanelShell";
 import { IconGridPanel } from "./IconGridPanel";
 import { HuePanel } from "./HuePanel";
 import { LayersPanel } from "./LayersPanel";
+import { BrushSettingsPanel } from "./BrushSettingsPanel";
 import { TOOLS, BRUSHES } from "./toolsData";
 import { BRUSH_ITEM_SIZE, BRUSH_GRID_GAP } from "./layoutConstants";
 import type { PanelId } from "./types";
@@ -21,6 +20,13 @@ interface PanelRendererProps {
   // Brushes
   activeBrush: string;
   onSelectBrush: (brushId: string) => void;
+  // Brush & Drawing Settings
+  brushOpacity: number;
+  onBrushOpacityChange: (val: number) => void;
+  stabilizerStrength: number;
+  onStabilizerStrengthChange: (val: number) => void;
+  shapeFilled: boolean;
+  onShapeFilledChange: (val: boolean) => void;
   // Color
   hue: number;
   sat: number;
@@ -35,6 +41,8 @@ interface PanelRendererProps {
   onToggleLayerLock: (id: string) => void;
   onSelectLayer: (id: string) => void;
   onReorderLayer: (draggedId: string, targetId: string, position: "before" | "after") => void;
+  onLayerOpacityChange?: (id: string, opacity: number) => void;
+  onLayerBlendModeChange?: (id: string, blendMode: GlobalCompositeOperation) => void;
 }
 
 export function PanelRenderer({
@@ -46,6 +54,12 @@ export function PanelRenderer({
   onSelectTool,
   activeBrush,
   onSelectBrush,
+  brushOpacity,
+  onBrushOpacityChange,
+  stabilizerStrength,
+  onStabilizerStrengthChange,
+  shapeFilled,
+  onShapeFilledChange,
   hue,
   sat,
   val,
@@ -58,6 +72,8 @@ export function PanelRenderer({
   onToggleLayerLock,
   onSelectLayer,
   onReorderLayer,
+  onLayerOpacityChange,
+  onLayerBlendModeChange,
 }: PanelRendererProps): ReactNode {
   const common = {
     dimmed: dragPanel === id,
@@ -87,6 +103,21 @@ export function PanelRenderer({
         </PanelShell>
       );
 
+    case "brushSettings":
+      return (
+        <PanelShell title="Brush Settings" {...common}>
+          <BrushSettingsPanel
+            brushOpacity={brushOpacity}
+            onBrushOpacityChange={onBrushOpacityChange}
+            stabilizerStrength={stabilizerStrength}
+            onStabilizerStrengthChange={onStabilizerStrengthChange}
+            shapeFilled={shapeFilled}
+            onShapeFilledChange={onShapeFilledChange}
+            activeTool={activeTool}
+          />
+        </PanelShell>
+      );
+
     case "hue":
       return (
         <PanelShell title="Color" {...common}>
@@ -106,6 +137,8 @@ export function PanelRenderer({
             onToggleLock={onToggleLayerLock}
             onSelect={onSelectLayer}
             onReorder={onReorderLayer}
+            onOpacityChange={onLayerOpacityChange}
+            onBlendModeChange={onLayerBlendModeChange}
           />
         </PanelShell>
       );

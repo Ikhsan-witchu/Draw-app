@@ -43,13 +43,14 @@ export function drawPen(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   const width = to.pressure !== 0.5
     ? Math.max(0.5, size * (0.3 + 0.7 * to.pressure))
     : size;
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = Math.max(0, Math.min(1, opacity));
   ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
   ctx.lineWidth = width;
   ctx.lineCap = "round";
@@ -80,13 +81,14 @@ export function drawRoundBrush(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   const width = to.pressure !== 0.5
     ? Math.max(1, size * (0.4 + 0.6 * to.pressure))
     : size;
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
-  ctx.globalAlpha = isEraser ? 0.9 : 0.88;
+  ctx.globalAlpha = (isEraser ? 0.9 : 0.88) * Math.max(0, Math.min(1, opacity));
   ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
   ctx.lineWidth = width;
   ctx.lineCap = "round";
@@ -116,6 +118,7 @@ export function drawFlatBrush(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -128,7 +131,7 @@ export function drawFlatBrush(
   const halfW = (size * 0.8) / 2; // lebar pipih
   const halfH = (size * 0.18) / 2; // ketebalan tipis
 
-  const alpha = isEraser ? 1 : 0.92;
+  const alpha = (isEraser ? 1 : 0.92) * Math.max(0, Math.min(1, opacity));
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
   ctx.globalAlpha = alpha;
@@ -163,9 +166,11 @@ export function drawFeather(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   const d = dist(from, to);
   const steps = Math.max(1, Math.ceil(d / (size * 0.25)));
+  const opFactor = Math.max(0, Math.min(1, opacity));
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
 
@@ -176,13 +181,13 @@ export function drawFeather(
     const r = size * 0.55;
 
     if (isEraser) {
-      ctx.globalAlpha = 0.06;
+      ctx.globalAlpha = 0.06 * opFactor;
       ctx.fillStyle = "rgba(0,0,0,1)";
     } else {
       const [cr, cg, cb] = parseColor(color);
       const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, `rgba(${cr},${cg},${cb},0.30)`);
-      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},0.10)`);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${0.30 * opFactor})`);
+      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${0.10 * opFactor})`);
       grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
       ctx.globalAlpha = 1;
       ctx.fillStyle = grad;
@@ -206,6 +211,7 @@ export function drawMarker(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   // Marker hampir tidak terpengaruh tekanan (konsisten)
   const width = to.pressure !== 0.5
@@ -213,7 +219,7 @@ export function drawMarker(
     : size;
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
-  ctx.globalAlpha = isEraser ? 1 : 0.55;
+  ctx.globalAlpha = (isEraser ? 1 : 0.55) * Math.max(0, Math.min(1, opacity));
   ctx.strokeStyle = isEraser ? "rgba(0,0,0,1)" : color;
   ctx.lineWidth = width;
   ctx.lineCap = "square"; // ujung persegi = khas spidol
@@ -242,10 +248,12 @@ export function drawPencil(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   const d = dist(from, to);
   const steps = Math.max(2, Math.ceil(d / 2));
-  const baseAlpha = isEraser ? 0.18 : 0.22;
+  const opFactor = Math.max(0, Math.min(1, opacity));
+  const baseAlpha = (isEraser ? 0.18 : 0.22) * opFactor;
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
 
@@ -263,7 +271,7 @@ export function drawPencil(
     const gj = Math.min(255, Math.max(0, cg + jitter));
     const bj = Math.min(255, Math.max(0, cb + jitter));
 
-    ctx.globalAlpha = baseAlpha + Math.random() * 0.08;
+    ctx.globalAlpha = baseAlpha + Math.random() * (0.08 * opFactor);
     ctx.fillStyle = isEraser
       ? `rgba(0,0,0,1)`
       : `rgb(${Math.round(rj)},${Math.round(gj)},${Math.round(bj)})`;
@@ -287,11 +295,13 @@ export function drawAirbrush(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   const d = dist(from, to);
   // Langkah per jarak — airbrush lebih jarang agar tidak terlalu opak
   const steps = Math.max(1, Math.ceil(d / (size * 0.4)));
   const radius = size * 1.2;
+  const opFactor = Math.max(0, Math.min(1, opacity));
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
 
@@ -312,9 +322,9 @@ export function drawAirbrush(
 
       // Semakin jauh dari pusat, semakin transparan
       const falloff = 1 - (r / radius);
-      ctx.globalAlpha = isEraser
+      ctx.globalAlpha = (isEraser
         ? falloff * 0.04
-        : falloff * 0.035 * (0.7 + 0.3 * to.pressure);
+        : falloff * 0.035 * (0.7 + 0.3 * to.pressure)) * opFactor;
       ctx.fillStyle = isEraser
         ? "rgba(0,0,0,1)"
         : `rgb(${cr},${cg},${cb})`;
@@ -340,16 +350,17 @@ export function dispatchBrush(
   size: number,
   color: string,
   isEraser: boolean,
+  opacity: number = 1,
 ): void {
   switch (brushType) {
-    case "pen":      return drawPen(ctx, from, to, size, color, isEraser);
-    case "round":    return drawRoundBrush(ctx, from, to, size, color, isEraser);
-    case "flat":     return drawFlatBrush(ctx, from, to, size, color, isEraser);
-    case "feather":  return drawFeather(ctx, from, to, size, color, isEraser);
-    case "marker":   return drawMarker(ctx, from, to, size, color, isEraser);
-    case "pencil2":  return drawPencil(ctx, from, to, size, color, isEraser);
-    case "airbrush": return drawAirbrush(ctx, from, to, size, color, isEraser);
+    case "pen":      return drawPen(ctx, from, to, size, color, isEraser, opacity);
+    case "round":    return drawRoundBrush(ctx, from, to, size, color, isEraser, opacity);
+    case "flat":     return drawFlatBrush(ctx, from, to, size, color, isEraser, opacity);
+    case "feather":  return drawFeather(ctx, from, to, size, color, isEraser, opacity);
+    case "marker":   return drawMarker(ctx, from, to, size, color, isEraser, opacity);
+    case "pencil2":  return drawPencil(ctx, from, to, size, color, isEraser, opacity);
+    case "airbrush": return drawAirbrush(ctx, from, to, size, color, isEraser, opacity);
     // Fallback ke pen untuk tipe tak dikenal
-    default:         return drawPen(ctx, from, to, size, color, isEraser);
+    default:         return drawPen(ctx, from, to, size, color, isEraser, opacity);
   }
 }

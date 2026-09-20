@@ -1,8 +1,7 @@
-// ─── Hook: gesture multi-sentuh & pointer events ibis Paint-style ────────────
-
 import { useRef, useEffect, type RefObject, type PointerEvent as ReactPointerEvent } from "react";
 import type { GestureState, PointerInfo, TabStore, LayerMeta } from "../types/drawing";
 import { ZOOM_MIN, ZOOM_MAX } from "../types/drawing";
+import { StrokeStabilizer } from "../utils/stabilizerUtils";
 
 interface UseCanvasGesturesParams {
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -25,6 +24,8 @@ interface UseCanvasGesturesParams {
 
   // Callback drawing
   isDrawable: boolean;
+  isShapeTool?: boolean;
+  stabilizerStrength?: number;
   docPointFromClient: (clientX: number, clientY: number) => { x: number; y: number };
   pushHistory: () => void;
   drawStrokeSegment: (
@@ -33,6 +34,8 @@ interface UseCanvasGesturesParams {
   ) => void;
   handleBucketFill: (clientX: number, clientY: number) => void;
   handleEyedropperPick: (clientX: number, clientY: number) => void;
+  onShapePreview?: (from: { x: number; y: number }, to: { x: number; y: number }) => void;
+  onShapeCommit?: (from: { x: number; y: number }, to: { x: number; y: number }) => void;
   recomposite: () => void;
   onStrokeComplete?: () => void;
 }
@@ -52,11 +55,15 @@ export function useCanvasGestures({
   layers,
   activeLayerId,
   isDrawable,
+  isShapeTool,
+  stabilizerStrength,
   docPointFromClient,
   pushHistory,
   drawStrokeSegment,
   handleBucketFill,
   handleEyedropperPick,
+  onShapePreview,
+  onShapeCommit,
   recomposite,
   onStrokeComplete,
 }: UseCanvasGesturesParams) {
@@ -67,7 +74,10 @@ export function useCanvasGestures({
   const gestureState = useRef<GestureState | null>(null);
 
   const isDrawing = useRef(false);
+  const isDrawingShape = useRef(false);
+  const shapeStartPoint = useRef<{ x: number; y: number } | null>(null);
   const lastPoint = useRef<{ x: number; y: number; pressure: number } | null>(null);
+  const stabilizer = useRef(new StrokeStabilizer());
   const isMousePanning = useRef(false);
   const mousePanStart = useRef({ clientX: 0, clientY: 0, startPanX: 0, startPanY: 0 });
 
@@ -103,6 +113,14 @@ export function useCanvasGestures({
 
   // ── Revert stroke yang sedang berjalan (waktu jari kedua turun) ───────────
   function revertInProgressStroke() {
+    if (isDrawingShape.current) {
+      isDrawingShape.current = false;
+      shapeStartPoint.current = null;
+      lastPoint.current = null;
+      recomposite();
+      return;
+    }
+
     if (!isDrawing.current || !strokePreSnapshot.current) return;
 
     isDrawing.current = false;
@@ -210,6 +228,14 @@ export function useCanvasGestures({
       const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
       if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
 
+      if (isShapeTool) {
+        isDrawingShape.current = true;
+        shapeStartPoint.current = { x: docPt.x, y: docPt.y };
+        lastPoint.current = { x: docPt.x, y: docPt.y, pressure: 0.5 };
+        onShapePreview?.(shapeStartPoint.current, shapeStartPoint.current);
+        return;
+      }
+
       // Simpan snapshot sebelum stroke untuk keperluan revert gesture
       const layerCanvas = store.layerCanvases.get(activeLayerId);
       const ctx = layerCanvas?.getContext("2d");
@@ -225,6 +251,7 @@ export function useCanvasGestures({
         y: docPt.y,
         pressure: e.pressure > 0 ? e.pressure : 0.5,
       };
+      stabilizer.current.reset(startPt);
       lastPoint.current = startPt;
       drawStrokeSegment(startPt, startPt);
     }
@@ -299,6 +326,14 @@ export function useCanvasGestures({
       return;
     }
 
+    // Drawing shape preview
+    if (!ignoreUntilAllUp.current && isDrawingShape.current && shapeStartPoint.current && activePointers.current.size === 1) {
+      const pt = docPointFromClient(e.clientX, e.clientY);
+      lastPoint.current = { x: pt.x, y: pt.y, pressure: 0.5 };
+      onShapePreview?.(shapeStartPoint.current, pt);
+      return;
+    }
+
     // Drawing stroke satu jari
     if (!ignoreUntilAllUp.current && isDrawing.current && activePointers.current.size === 1 && activeLayerId) {
       const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
@@ -307,10 +342,15 @@ export function useCanvasGestures({
       const pt = docPointFromClient(e.clientX, e.clientY);
       const currentPt = { x: pt.x, y: pt.y, pressure: e.pressure > 0 ? e.pressure : 0.5 };
 
-      if (lastPoint.current) {
-        drawStrokeSegment(lastPoint.current, currentPt);
+      let strokePt = currentPt;
+      if (stabilizerStrength && stabilizerStrength > 0) {
+        strokePt = stabilizer.current.filter(currentPt, stabilizerStrength);
       }
-      lastPoint.current = currentPt;
+
+      if (lastPoint.current) {
+        drawStrokeSegment(lastPoint.current, strokePt);
+      }
+      lastPoint.current = strokePt;
     }
   };
 
@@ -329,6 +369,17 @@ export function useCanvasGestures({
     }
 
     if (activePointers.current.size === 0) {
+      if (isDrawingShape.current && shapeStartPoint.current) {
+        const finalPt = lastPoint.current ? { x: lastPoint.current.x, y: lastPoint.current.y } : shapeStartPoint.current;
+        pushHistory();
+        onShapeCommit?.(shapeStartPoint.current, finalPt);
+        isDrawingShape.current = false;
+        shapeStartPoint.current = null;
+        lastPoint.current = null;
+        onStrokeComplete?.();
+        return;
+      }
+
       const wasDrawing = isDrawing.current;
       isDrawing.current = false;
       lastPoint.current = null;
