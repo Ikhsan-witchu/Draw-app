@@ -34,6 +34,7 @@ interface UseCanvasGesturesParams {
   handleBucketFill: (clientX: number, clientY: number) => void;
   handleEyedropperPick: (clientX: number, clientY: number) => void;
   recomposite: () => void;
+  onStrokeComplete?: () => void;
 }
 
 export function useCanvasGestures({
@@ -327,10 +328,14 @@ export function useCanvasGestures({
     }
 
     if (activePointers.current.size === 0) {
+      const wasDrawing = isDrawing.current;
       isDrawing.current = false;
       lastPoint.current = null;
       strokePreSnapshot.current = null;
       ignoreUntilAllUp.current = false;
+      if (wasDrawing) {
+        onStrokeComplete?.();
+      }
     }
   };
 

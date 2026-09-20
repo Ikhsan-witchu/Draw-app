@@ -17,6 +17,7 @@ interface UseLayerManagerParams {
   activeLayerId: string | null;
   setActiveLayerId: Dispatch<SetStateAction<string | null>>;
   recomposite: () => void;
+  onLayerStructureChange?: (deletedId?: string, addedOrUpdatedId?: string) => void;
 }
 
 export function useLayerManager({
@@ -26,6 +27,7 @@ export function useLayerManager({
   activeLayerId,
   setActiveLayerId,
   recomposite,
+  onLayerStructureChange,
 }: UseLayerManagerParams) {
   function addLayer() {
     const store = getActiveStore();
@@ -37,6 +39,7 @@ export function useLayerManager({
     store.layerCanvases.set(id, createLayerCanvas(store.width, store.height));
     setLayers((prev) => [{ id, name, visible: true, locked: false }, ...prev]);
     setActiveLayerId(id);
+    onLayerStructureChange?.(undefined, id);
   }
 
   function deleteLayer(id: string) {
@@ -59,14 +62,17 @@ export function useLayerManager({
     if (activeLayerId === id) {
       setActiveLayerId(next[0]?.id ?? null);
     }
+    onLayerStructureChange?.(id, undefined);
   }
 
   function toggleLayerVisibility(id: string) {
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
+    onLayerStructureChange?.();
   }
 
   function toggleLayerLock(id: string) {
     setLayers((prev) => prev.map((l) => (l.id === id ? { ...l, locked: !l.locked } : l)));
+    onLayerStructureChange?.();
   }
 
   function selectLayer(id: string) {
@@ -89,6 +95,7 @@ export function useLayerManager({
       next.splice(insertIndex, 0, dragged);
       return next;
     });
+    onLayerStructureChange?.();
   }
 
   function importImageAsLayer(image: HTMLImageElement, dropX?: number, dropY?: number) {
@@ -117,6 +124,7 @@ export function useLayerManager({
     setLayers((prev) => [{ id, name, visible: true, locked: false }, ...prev]);
     setActiveLayerId(id);
     recomposite();
+    onLayerStructureChange?.(undefined, id);
   }
 
   function importImageFromFile(file: File, dropX?: number, dropY?: number) {

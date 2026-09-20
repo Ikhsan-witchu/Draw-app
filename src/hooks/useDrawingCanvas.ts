@@ -12,6 +12,18 @@ import {
   loadImageFromFile,
 } from "../utils/canvasUtils";
 import { dispatchBrush } from "../utils/brushUtils";
+import {
+  saveLayerCanvasBlob,
+  loadLayerCanvasBlob,
+  applyBlobToCanvas,
+  deleteLayerBlob,
+  createThumbnailDataUrl,
+  saveActiveAppState,
+  loadActiveAppState,
+  saveRecentProject,
+  loadRecentProject,
+  type PersistedTabMeta,
+} from "../utils/persistence";
 import { useLayerManager } from "./useLayerManager";
 import { useCanvasGestures } from "./useCanvasGestures";
 
@@ -75,39 +87,84 @@ export function useDrawingCanvas({
 
   // ── Inisialisasi & sinkronisasi tab store ─────────────────────────────────
   useEffect(() => {
-    // Buat store untuk tab baru
+    // Ambil data yang tersimpan di storage (jika browser baru di-reload)
+    const persistedState = loadActiveAppState() || (loadRecentProject()?.tab ? { tabs: [loadRecentProject()!.tab] } : null);
+
+    // Buat store untuk tab baru atau pulihkan dari storage
     for (const tab of tabs) {
       if (tabStoresRef.current.has(tab.id)) continue;
 
-      const backgroundId = generateId("layer");
-      const layerOneId = generateId("layer");
+      const persistedTab = persistedState?.tabs?.find((t) => t.id === tab.id);
 
-      const backgroundCanvas = createLayerCanvas(tab.width, tab.height);
-      if (tab.initialImage) {
-        const bgCtx = backgroundCanvas.getContext("2d");
-        bgCtx?.drawImage(tab.initialImage, 0, 0, tab.width, tab.height);
+      if (persistedTab && Array.isArray(persistedTab.layers) && persistedTab.layers.length > 0) {
+        // Pulihkan dari state tersimpan: tidak membuat duplicate layer
+        const layerCanvasesMap = new Map<string, HTMLCanvasElement>();
+        for (const l of persistedTab.layers) {
+          layerCanvasesMap.set(l.id, createLayerCanvas(tab.width, tab.height));
+        }
+
+        tabStoresRef.current.set(tab.id, {
+          width: tab.width,
+          height: tab.height,
+          layers: persistedTab.layers,
+          activeLayerId: persistedTab.activeLayerId ?? persistedTab.layers[0]?.id ?? null,
+          layerCanvases: layerCanvasesMap,
+          history: new Map(),
+          zoom: persistedTab.zoom ?? 1,
+          panX: persistedTab.panX ?? 0,
+          panY: persistedTab.panY ?? 0,
+          rotation: persistedTab.rotation ?? 0,
+        });
+
+        // Muat piksel layer dari IndexedDB secara asinkron
+        for (const l of persistedTab.layers) {
+          const lc = layerCanvasesMap.get(l.id);
+          if (lc) {
+            loadLayerCanvasBlob(tab.id, l.id).then((blob) => {
+              if (blob) {
+                applyBlobToCanvas(lc, blob).then(() => {
+                  recomposite();
+                });
+              }
+            });
+          }
+        }
+      } else {
+        // Tab baru biasa
+        const backgroundId = generateId("layer");
+        const layerOneId = generateId("layer");
+
+        const backgroundCanvas = createLayerCanvas(tab.width, tab.height);
+        if (tab.initialImage) {
+          const bgCtx = backgroundCanvas.getContext("2d");
+          bgCtx?.drawImage(tab.initialImage, 0, 0, tab.width, tab.height);
+        }
+
+        const fit = calculateFit(tab.width, tab.height);
+
+        tabStoresRef.current.set(tab.id, {
+          width: tab.width,
+          height: tab.height,
+          layers: [
+            { id: layerOneId, name: "Layer 1", visible: true, locked: false },
+            { id: backgroundId, name: "Background", visible: true, locked: false },
+          ],
+          activeLayerId: layerOneId,
+          layerCanvases: new Map([
+            [layerOneId, createLayerCanvas(tab.width, tab.height)],
+            [backgroundId, backgroundCanvas],
+          ]),
+          history: new Map(),
+          zoom: fit.zoom,
+          panX: fit.panX,
+          panY: fit.panY,
+          rotation: fit.rotation,
+        });
+
+        if (tab.initialImage) {
+          saveLayerCanvasBlob(tab.id, backgroundId, backgroundCanvas);
+        }
       }
-
-      const fit = calculateFit(tab.width, tab.height);
-
-      tabStoresRef.current.set(tab.id, {
-        width: tab.width,
-        height: tab.height,
-        layers: [
-          { id: layerOneId, name: "Layer 1", visible: true, locked: false },
-          { id: backgroundId, name: "Background", visible: true, locked: false },
-        ],
-        activeLayerId: layerOneId,
-        layerCanvases: new Map([
-          [layerOneId, createLayerCanvas(tab.width, tab.height)],
-          [backgroundId, backgroundCanvas],
-        ]),
-        history: new Map(),
-        zoom: fit.zoom,
-        panX: fit.panX,
-        panY: fit.panY,
-        rotation: fit.rotation,
-      });
 
       justInitializedRef.current.add(tab.id);
     }
@@ -156,6 +213,7 @@ export function useDrawingCanvas({
     }
 
     prevActiveTabIdRef.current = activeTabId;
+    schedulePersistSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs, activeTabId]);
 
@@ -184,6 +242,86 @@ export function useDrawingCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, activeTabId]);
 
+  // ── Persistensi State & Layer Canvases ────────────────────────────────────
+  function persistCurrentSession() {
+    if (!tabs || tabs.length === 0) return;
+
+    const persistedTabs: PersistedTabMeta[] = tabs.map((t) => {
+      const s = tabStoresRef.current.get(t.id);
+      return {
+        id: t.id,
+        title: t.title,
+        width: t.width,
+        height: t.height,
+        layers: s?.layers ?? [
+          { id: "layer-1", name: "Layer 1", visible: true, locked: false },
+          { id: "layer-bg", name: "Background", visible: true, locked: false },
+        ],
+        activeLayerId: s?.activeLayerId ?? null,
+        zoom: s?.zoom ?? 1,
+        panX: s?.panX ?? 0,
+        panY: s?.panY ?? 0,
+        rotation: s?.rotation ?? 0,
+      };
+    });
+
+    const current = loadActiveAppState();
+    saveActiveAppState({
+      ...current,
+      activeTabId,
+      tabs: persistedTabs,
+      activeTool: tool,
+      activeBrush: brushType,
+      brushSize,
+    });
+
+    // Simpan snapshot juga ke recent project untuk Home screen
+    const activeStore = getActiveStore();
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const mainCanvas = canvasRef.current;
+    if (activeTab && activeStore && mainCanvas) {
+      const thumbUrl = createThumbnailDataUrl(mainCanvas);
+      saveRecentProject({
+        tab: {
+          id: activeTab.id,
+          title: activeTab.title,
+          width: activeTab.width,
+          height: activeTab.height,
+          layers: activeStore.layers,
+          activeLayerId: activeStore.activeLayerId,
+          zoom: activeStore.zoom,
+          panX: activeStore.panX,
+          panY: activeStore.panY,
+          rotation: activeStore.rotation,
+        },
+        thumbnailDataUrl: thumbUrl,
+        updatedAt: Date.now(),
+        layerCount: activeStore.layers.length,
+      });
+    }
+  }
+
+  const debouncedPersistRef = useRef<number | null>(null);
+  function schedulePersistSession() {
+    if (debouncedPersistRef.current) {
+      window.clearTimeout(debouncedPersistRef.current);
+    }
+    debouncedPersistRef.current = window.setTimeout(() => {
+      persistCurrentSession();
+    }, 350);
+  }
+
+  function persistActiveLayerContent() {
+    const store = getActiveStore();
+    if (!activeTabId || !activeLayerId || !store) return;
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    if (!layerCanvas) return;
+
+    saveLayerCanvasBlob(activeTabId, activeLayerId, layerCanvas).then(() => {
+      persistCurrentSession();
+    });
+  }
+
   // Sync layer state ke store (skip tab yang baru diinisialisasi)
   useEffect(() => {
     if (activeTabId && justInitializedRef.current.has(activeTabId)) {
@@ -194,6 +332,7 @@ export function useDrawingCanvas({
     if (store) {
       store.layers = layers;
       store.activeLayerId = activeLayerId;
+      schedulePersistSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers, activeLayerId]);
@@ -206,6 +345,7 @@ export function useDrawingCanvas({
       store.panX = panX;
       store.panY = panY;
       store.rotation = rotation;
+      schedulePersistSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom, panX, panY, rotation]);
@@ -264,6 +404,7 @@ export function useDrawingCanvas({
     if (snapshot) {
       ctx.putImageData(snapshot, 0, 0);
       recomposite();
+      persistActiveLayerContent();
     }
   }
 
@@ -292,6 +433,7 @@ export function useDrawingCanvas({
     floodFill(imageData, px, py, [r, g, b, 255], 24);
     ctx.putImageData(imageData, 0, 0);
     recomposite();
+    persistActiveLayerContent();
   }
 
   function handleEyedropperPick(clientX: number, clientY: number) {
@@ -338,6 +480,19 @@ export function useDrawingCanvas({
     activeLayerId,
     setActiveLayerId,
     recomposite,
+    onLayerStructureChange: (deletedId, addedOrUpdatedId) => {
+      if (deletedId && activeTabId) {
+        deleteLayerBlob(activeTabId, deletedId);
+      }
+      if (addedOrUpdatedId && activeTabId) {
+        const store = getActiveStore();
+        const canvas = store?.layerCanvases.get(addedOrUpdatedId);
+        if (canvas) {
+          saveLayerCanvasBlob(activeTabId, addedOrUpdatedId, canvas);
+        }
+      }
+      persistCurrentSession();
+    },
   });
 
   // ── Gesture & pointer handler ─────────────────────────────────────────────
@@ -362,6 +517,7 @@ export function useDrawingCanvas({
     handleBucketFill,
     handleEyedropperPick,
     recomposite,
+    onStrokeComplete: persistActiveLayerContent,
   });
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────

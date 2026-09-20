@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -26,6 +27,7 @@ import {
 } from "./layoutConstants";
 import type { DockZone, DropPosition, PanelId } from "./types";
 import NewImageDialog, { type DocumentSize } from "../Start/NewImageDialog";
+import { loadActiveAppState, saveActiveAppState } from "../../utils/persistence";
 
 // Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
 const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
@@ -100,13 +102,40 @@ export default function DrawingWorkspace({
 }: DrawingWorkspaceProps) {
   const isMobile = useIsMobile();
 
-  const [leftWidth, setLeftWidth] = useState(() => computeSidebarWidth(INITIAL_LEFT_PANELS));
-  const [rightWidth, setRightWidth] = useState(() => computeSidebarWidth(INITIAL_RIGHT_PANELS));
-  const [bottomHeight, setBottomHeight] = useState(140);
+  const [leftWidth, setLeftWidth] = useState(() => {
+    const saved = loadActiveAppState();
+    return saved?.leftWidth ?? computeSidebarWidth(INITIAL_LEFT_PANELS);
+  });
+  const [rightWidth, setRightWidth] = useState(() => {
+    const saved = loadActiveAppState();
+    return saved?.rightWidth ?? computeSidebarWidth(INITIAL_RIGHT_PANELS);
+  });
+  const [bottomHeight, setBottomHeight] = useState(() => {
+    const saved = loadActiveAppState();
+    return saved?.bottomHeight ?? 140;
+  });
 
-  const [leftPanels, setLeftPanels] = useState<PanelId[]>(INITIAL_LEFT_PANELS);
-  const [rightPanels, setRightPanels] = useState<PanelId[]>(INITIAL_RIGHT_PANELS);
-  const [bottomPanels, setBottomPanels] = useState<PanelId[]>(["layers"]);
+  const [leftPanels, setLeftPanels] = useState<PanelId[]>(() => {
+    const saved = loadActiveAppState();
+    if (saved?.leftPanels && Array.isArray(saved.leftPanels) && saved.leftPanels.length > 0) {
+      return saved.leftPanels as PanelId[];
+    }
+    return INITIAL_LEFT_PANELS;
+  });
+  const [rightPanels, setRightPanels] = useState<PanelId[]>(() => {
+    const saved = loadActiveAppState();
+    if (saved?.rightPanels && Array.isArray(saved.rightPanels) && saved.rightPanels.length > 0) {
+      return saved.rightPanels as PanelId[];
+    }
+    return INITIAL_RIGHT_PANELS;
+  });
+  const [bottomPanels, setBottomPanels] = useState<PanelId[]>(() => {
+    const saved = loadActiveAppState();
+    if (saved?.bottomPanels && Array.isArray(saved.bottomPanels) && saved.bottomPanels.length > 0) {
+      return saved.bottomPanels as PanelId[];
+    }
+    return ["layers"];
+  });
 
   const [dragPanel, setDragPanel] = useState<PanelId | null>(null);
   const [dragOverZone, setDragOverZone] = useState<DockZone | null>(null);
@@ -120,13 +149,64 @@ export default function DrawingWorkspace({
   });
 
   // State fungsional: tool aktif, warna (hue/sat/val), brush size
-  const [activeTool, setActiveTool] = useState<string>(TOOLS[0]?.id ?? "brush");
-  const [activeBrush, setActiveBrush] = useState<string>(BRUSHES[0]?.id ?? "pen");
-  const [brushSize, setBrushSize] = useState<number>(8);
-  const [hue, setHue] = useState(200);
-  const [sat, setSat] = useState(70);
-  const [val, setVal] = useState(85);
+  const [activeTool, setActiveTool] = useState<string>(() => {
+    const saved = loadActiveAppState();
+    return saved?.activeTool ?? TOOLS[0]?.id ?? "brush";
+  });
+  const [activeBrush, setActiveBrush] = useState<string>(() => {
+    const saved = loadActiveAppState();
+    return saved?.activeBrush ?? BRUSHES[0]?.id ?? "pen";
+  });
+  const [brushSize, setBrushSize] = useState<number>(() => {
+    const saved = loadActiveAppState();
+    return saved?.brushSize ?? 8;
+  });
+  const [hue, setHue] = useState(() => {
+    const saved = loadActiveAppState();
+    return saved?.color?.hue ?? 200;
+  });
+  const [sat, setSat] = useState(() => {
+    const saved = loadActiveAppState();
+    return saved?.color?.sat ?? 70;
+  });
+  const [val, setVal] = useState(() => {
+    const saved = loadActiveAppState();
+    return saved?.color?.val ?? 85;
+  });
   const color = `hsl(${hue}, ${sat}%, ${val}%)`;
+
+  // Sinkronisasi tool, warna, dan layout panel ke persistence
+  useEffect(() => {
+    const current = loadActiveAppState();
+    if (current) {
+      saveActiveAppState({
+        ...current,
+        activeTool,
+        activeBrush,
+        brushSize,
+        color: { hue, sat, val },
+        leftWidth,
+        rightWidth,
+        bottomHeight,
+        leftPanels,
+        rightPanels,
+        bottomPanels,
+      });
+    }
+  }, [
+    activeTool,
+    activeBrush,
+    brushSize,
+    hue,
+    sat,
+    val,
+    leftWidth,
+    rightWidth,
+    bottomHeight,
+    leftPanels,
+    rightPanels,
+    bottomPanels,
+  ]);
 
   const drawing = useDrawingCanvas({
     tool: activeTool,
