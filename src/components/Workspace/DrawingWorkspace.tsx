@@ -16,6 +16,7 @@ import { Sidebar } from "./Sidebar";
 import { MobileTopBar, MobileBottomBar } from "./MobileToolbar";
 import { BottomSheet } from "./BottomSheet";
 import { BrushSizeControl } from "./BrushSizeControl";
+import { BrushOpacityControl } from "./BrushOpacityControl";
 import { PanelRenderer } from "./PanelRenderer";
 import { ResizeSplitter } from "./ResizeSplitter";
 import { TOOLS, BRUSHES } from "./toolsData";
@@ -648,6 +649,13 @@ export default function DrawingWorkspace({
       <div className="relative z-30 h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
         <MenuBar menus={[fileMenu, workspaceMenu]} />
         <div className="flex items-center gap-3">
+          <BrushOpacityControl
+            opacity={brushOpacity}
+            onChange={setBrushOpacity}
+            color={color}
+            isEraser={activeTool === "eraser"}
+          />
+          <div className="w-px h-5 bg-neutral-700 shrink-0" />
           <BrushSizeControl
             size={brushSize}
             onChange={setBrushSize}
