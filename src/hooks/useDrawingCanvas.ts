@@ -55,6 +55,8 @@ export function useDrawingCanvas({
 
   const tabStoresRef = useRef<Map<string, TabStore>>(new Map());
   const justInitializedRef = useRef<Set<string>>(new Set());
+  // Tab IDs yang perlu di-fit ke viewport setelah render pertama (viewport belum siap saat init)
+  const needsFitRef = useRef<Set<string>>(new Set());
   const prevActiveTabIdRef = useRef<string | null>(null);
 
   const [layers, setLayers] = useState<LayerMeta[]>(() => {
@@ -152,6 +154,11 @@ export function useDrawingCanvas({
           rotation: persistedTab.rotation ?? 0,
         });
 
+        // Jika tab dipulihkan tanpa zoom tersimpan, fit ke viewport nanti
+        if (persistedTab.zoom == null) {
+          needsFitRef.current.add(tab.id);
+        }
+
         // Muat piksel layer dari IndexedDB secara asinkron
         (async () => {
           let hasLoadedAny = false;
@@ -184,8 +191,6 @@ export function useDrawingCanvas({
           bgCtx?.drawImage(tab.initialImage, 0, 0, tab.width, tab.height);
         }
 
-        const fit = calculateFit(tab.width, tab.height);
-
         tabStoresRef.current.set(tab.id, {
           width: tab.width,
           height: tab.height,
@@ -199,11 +204,14 @@ export function useDrawingCanvas({
             [backgroundId, backgroundCanvas],
           ]),
           history: new Map(),
-          zoom: fit.zoom,
-          panX: fit.panX,
-          panY: fit.panY,
-          rotation: fit.rotation,
+          zoom: 1,
+          panX: 0,
+          panY: 0,
+          rotation: 0,
         });
+
+        // Tab baru selalu di-fit ke viewport setelah render pertama
+        needsFitRef.current.add(tab.id);
 
         if (tab.initialImage) {
           saveLayerCanvasBlob(tab.id, backgroundId, backgroundCanvas);
@@ -261,6 +269,39 @@ export function useDrawingCanvas({
     schedulePersistSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabs, activeTabId]);
+
+  // ── Deferred fit-to-viewport ───────────────────────────────────────────────
+  // Viewport belum punya ukuran saat tab store dibuat (masih dalam render phase),
+  // jadi kita tunda fit hingga setelah paint berikutnya.
+  useEffect(() => {
+    if (!activeTabId) return;
+    if (!needsFitRef.current.has(activeTabId)) return;
+
+    const raf = requestAnimationFrame(() => {
+      if (!needsFitRef.current.has(activeTabId)) return;
+      const store = tabStoresRef.current.get(activeTabId);
+      if (!store) return;
+
+      const fit = calculateFit(store.width, store.height);
+      // Viewport bisa saja masih belum siap (mis. 0×0) → jangan terapkan
+      if (fit.zoom <= 0 || !viewportRef.current) return;
+
+      store.zoom = fit.zoom;
+      store.panX = fit.panX;
+      store.panY = fit.panY;
+      store.rotation = fit.rotation;
+
+      setZoom(fit.zoom);
+      setPanX(fit.panX);
+      setPanY(fit.panY);
+      setRotation(fit.rotation);
+
+      needsFitRef.current.delete(activeTabId);
+    });
+
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId, tabs]);
 
   // ── Compositing: gabungkan semua layer yang visible ke main canvas ─────────
   function recomposite() {
