@@ -58,6 +58,7 @@ export function useCanvasGestures({
   handleBucketFill,
   handleEyedropperPick,
   recomposite,
+  onStrokeComplete,
 }: UseCanvasGesturesParams) {
   const activePointers = useRef<Map<number, PointerInfo>>(new Map());
   const isGestureActive = useRef(false);
