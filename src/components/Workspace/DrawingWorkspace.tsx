@@ -454,6 +454,8 @@ export default function DrawingWorkspace({
             onResetRotation={drawing.resetRotation}
             canvasWidth={drawing.canvasWidth}
             canvasHeight={drawing.canvasHeight}
+            activeTool={activeTool}
+            brushSize={brushSize}
           />
         </div>
 
@@ -632,6 +634,8 @@ export default function DrawingWorkspace({
               onResetRotation={drawing.resetRotation}
               canvasWidth={drawing.canvasWidth}
               canvasHeight={drawing.canvasHeight}
+              activeTool={activeTool}
+              brushSize={brushSize}
             />
           </div>
 
