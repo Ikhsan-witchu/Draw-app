@@ -106,6 +106,12 @@ export function useDrawingCanvas({
   useEffect(() => { panYRef.current = panY; }, [panY]);
   useEffect(() => { rotationRef.current = rotation; }, [rotation]);
 
+  // Scratch canvas: goresan sedang berjalan digambar di sini (opacity penuh),
+  // lalu di-composite ke display canvas dengan brush opacity.
+  // Ini mencegah penumpukan opacity dalam satu goresan.
+  const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const scratchOpacityRef = useRef(1);
+
   // ── Helper: ambil store tab aktif ─────────────────────────────────────────
   function getActiveStore(): TabStore | undefined {
     return activeTabId ? tabStoresRef.current.get(activeTabId) : undefined;
@@ -360,6 +366,11 @@ export function useDrawingCanvas({
         ctx.globalAlpha = (layer.opacity ?? 100) / 100;
         ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
         ctx.drawImage(layerCanvas, 0, 0, store.width, store.height);
+        // Overlay scratch canvas (goresan sedang berjalan) di atas layer aktif
+        if (scratchCanvasRef.current && layer.id === activeLayerId) {
+          ctx.globalAlpha = ((layer.opacity ?? 100) / 100) * scratchOpacityRef.current;
+          ctx.drawImage(scratchCanvasRef.current, 0, 0, store.width, store.height);
+        }
       }
     }
 
@@ -402,6 +413,11 @@ export function useDrawingCanvas({
         ctx.globalAlpha = (layer.opacity ?? 100) / 100;
         ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
         ctx.drawImage(layerCanvas, x0, y0, rw, rh, x0, y0, rw, rh);
+        // Overlay scratch canvas (goresan sedang berjalan) di atas layer aktif
+        if (scratchCanvasRef.current && layer.id === activeLayerId) {
+          ctx.globalAlpha = ((layer.opacity ?? 100) / 100) * scratchOpacityRef.current;
+          ctx.drawImage(scratchCanvasRef.current, x0, y0, rw, rh, x0, y0, rw, rh);
+        }
       }
     }
 
@@ -496,6 +512,31 @@ export function useDrawingCanvas({
     });
   }
 
+  /** Flatten scratch canvas ke layer asli saat stroke selesai (pointer up). */
+  function commitScratchCanvas() {
+    const scratch = scratchCanvasRef.current;
+    if (!scratch) return;
+
+    const store = getActiveStore();
+    if (!store || !activeLayerId) {
+      scratchCanvasRef.current = null;
+      return;
+    }
+
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (ctx && layerCanvas) {
+      ctx.save();
+      ctx.globalAlpha = scratchOpacityRef.current;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(scratch, 0, 0);
+      ctx.restore();
+    }
+
+    scratchCanvasRef.current = null;
+    recomposite();
+  }
+
   // Sync layer state ke store (skip tab yang baru diinisialisasi)
   useEffect(() => {
     if (activeTabId && justInitializedRef.current.has(activeTabId)) {
@@ -581,6 +622,7 @@ export function useDrawingCanvas({
     const stack = store.history.get(activeLayerId);
     const snapshot = stack?.pop();
     if (snapshot) {
+      scratchCanvasRef.current = null;
       ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
       ctx.drawImage(snapshot, 0, 0);
       recomposite();
@@ -638,13 +680,28 @@ export function useDrawingCanvas({
     if (!store || !activeLayerId) return;
 
     const layerCanvas = store.layerCanvases.get(activeLayerId);
-    const ctx = layerCanvas?.getContext("2d");
-    if (!ctx) return;
+    if (!layerCanvas) return;
 
     const isEraser = tool === "eraser";
     const opacityFactor = (brushOpacity ?? 100) / 100;
     const currentSize = Math.max(1, brushSize);
-    dispatchBrush(brushType, ctx, from, to, currentSize, color, isEraser, opacityFactor);
+
+    if (isEraser) {
+      // Eraser langsung ke layer canvas (destination-out tidak bisa via scratch)
+      const ctx = layerCanvas.getContext("2d");
+      if (!ctx) return;
+      dispatchBrush(brushType, ctx, from, to, currentSize, color, true, opacityFactor);
+    } else {
+      // Buat scratch canvas jika belum ada (per-stroke)
+      if (!scratchCanvasRef.current) {
+        scratchCanvasRef.current = createLayerCanvas(layerCanvas.width, layerCanvas.height);
+        scratchOpacityRef.current = opacityFactor;
+      }
+      const scratchCtx = scratchCanvasRef.current.getContext("2d");
+      if (!scratchCtx) return;
+      // Gambar dengan opacity penuh di scratch — opacity diterapkan saat recomposite
+      dispatchBrush(brushType, scratchCtx, from, to, currentSize, color, false, 1);
+    }
 
     // Dirty-rect invalidation: rekomposisi hanya sub-area kecil yang disentuh kuas
     const pad = Math.max(Math.ceil(currentSize * 1.8) + 8, 24);
@@ -767,7 +824,13 @@ export function useDrawingCanvas({
     onShapePreview: handleShapePreview,
     onShapeCommit: handleShapeCommit,
     recomposite,
-    onStrokeComplete: persistActiveLayerContent,
+    onStrokeComplete: () => {
+      commitScratchCanvas();
+      persistActiveLayerContent();
+    },
+    clearScratch: () => {
+      scratchCanvasRef.current = null;
+    },
   });
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────

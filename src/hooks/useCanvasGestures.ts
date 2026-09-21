@@ -38,6 +38,7 @@ interface UseCanvasGesturesParams {
   onShapeCommit?: (from: { x: number; y: number }, to: { x: number; y: number }) => void;
   recomposite: () => void;
   onStrokeComplete?: () => void;
+  clearScratch?: () => void;
 }
 
 export function useCanvasGestures({
@@ -66,6 +67,7 @@ export function useCanvasGestures({
   onShapeCommit,
   recomposite,
   onStrokeComplete,
+  clearScratch,
 }: UseCanvasGesturesParams) {
   const activePointers = useRef<Map<number, PointerInfo>>(new Map());
   const isGestureActive = useRef(false);
@@ -124,6 +126,7 @@ export function useCanvasGestures({
 
     isDrawing.current = false;
     lastPoint.current = null;
+    clearScratch?.();
 
     const store = getActiveStore();
     if (store && activeLayerId) {

@@ -596,7 +596,7 @@ export default function DrawingWorkspace({
             {/* Mobile Brush Opacity Slider */}
             <div className="mb-3 pb-3 border-b border-neutral-800">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-neutral-400 font-medium">Kerapatan / Opacity</span>
+                <span className="text-xs text-neutral-400 font-medium">Opacity Brush</span>
                 <span className="text-xs font-mono text-white bg-neutral-800 px-2 py-0.5 rounded">
                   {brushOpacity}%
                 </span>

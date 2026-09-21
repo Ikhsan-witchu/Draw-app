@@ -28,7 +28,7 @@ export function BrushSettingsPanel({
         <div className="flex justify-between items-center text-neutral-400 font-medium">
           <span className="flex items-center gap-1.5">
             <Sliders size={13} />
-            Kerapatan / Opacity
+            Opacity Brush
           </span>
           <span className="text-white font-mono text-[11px]">{brushOpacity}%</span>
         </div>
