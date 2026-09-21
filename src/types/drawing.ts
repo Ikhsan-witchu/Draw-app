@@ -29,7 +29,7 @@ export interface TabStore {
   layers: LayerMeta[];
   activeLayerId: string | null;
   layerCanvases: Map<string, HTMLCanvasElement>;
-  history: Map<string, ImageData[]>;
+  history: Map<string, HTMLCanvasElement[]>;
   zoom: number;
   panX: number;
   panY: number;

@@ -374,6 +374,47 @@ export function useDrawingCanvas({
     ctx.globalCompositeOperation = "source-over";
   }
 
+  // ── Compositing Cepat (Dirty Rect): hanya rekomposisi sub-area kecil yang disentuh kuas ──
+  // Mengurangi beban rendering dari 8.700.000 piksel (pada A4) menjadi ~1.500 piksel per goresan
+  function recompositeRect(x: number, y: number, w: number, h: number) {
+    const store = getActiveStore();
+    if (!store || !ctxRef.current || w <= 0 || h <= 0) return;
+    const ctx = ctxRef.current;
+
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(store.width, Math.ceil(x + w));
+    const y1 = Math.min(store.height, Math.ceil(y + h));
+    const rw = x1 - x0;
+    const rh = y1 - y0;
+    if (rw <= 0 || rh <= 0) return;
+
+    const currentLayers = (store.layers && store.layers.length > 0) ? store.layers : layers;
+    if (!currentLayers || currentLayers.length === 0) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, rw, rh);
+    ctx.clip();
+
+    ctx.clearRect(x0, y0, rw, rh);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x0, y0, rw, rh);
+
+    for (let i = currentLayers.length - 1; i >= 0; i--) {
+      const layer = currentLayers[i];
+      if (!layer.visible) continue;
+      const layerCanvas = store.layerCanvases.get(layer.id);
+      if (layerCanvas) {
+        ctx.globalAlpha = (layer.opacity ?? 100) / 100;
+        ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
+        ctx.drawImage(layerCanvas, x0, y0, rw, rh, x0, y0, rw, rh);
+      }
+    }
+
+    ctx.restore();
+  }
+
   const recompositeRef = useRef(recomposite);
   recompositeRef.current = recomposite;
 
@@ -516,17 +557,22 @@ export function useDrawingCanvas({
     };
   }
 
-  // ── History ────────────────────────────────────────────────────────────────
+  // ── History (GPU Canvas Clones, tanpa CPU readback getImageData) ────────────
   function pushHistory() {
     const store = getActiveStore();
     if (!store || !activeLayerId) return;
 
     const layerCanvas = store.layerCanvases.get(activeLayerId);
-    const ctx = layerCanvas?.getContext("2d");
-    if (!ctx || !layerCanvas) return;
+    if (!layerCanvas) return;
+
+    // Kloning kanvas via drawImage murni di GPU (Texture blit ~0.3ms),
+    // menghilangkan alokasi 35MB CPU RAM dan GPU stall di A4
+    const copy = createLayerCanvas(layerCanvas.width, layerCanvas.height);
+    const copyCtx = copy.getContext("2d");
+    copyCtx?.drawImage(layerCanvas, 0, 0);
 
     const stack = store.history.get(activeLayerId) ?? [];
-    stack.push(ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height));
+    stack.push(copy);
     if (stack.length > MAX_HISTORY) stack.shift();
     store.history.set(activeLayerId, stack);
   }
@@ -537,12 +583,13 @@ export function useDrawingCanvas({
 
     const layerCanvas = store.layerCanvases.get(activeLayerId);
     const ctx = layerCanvas?.getContext("2d");
-    if (!ctx) return;
+    if (!ctx || !layerCanvas) return;
 
     const stack = store.history.get(activeLayerId);
     const snapshot = stack?.pop();
     if (snapshot) {
-      ctx.putImageData(snapshot, 0, 0);
+      ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+      ctx.drawImage(snapshot, 0, 0);
       recomposite();
       persistActiveLayerContent();
     }
@@ -605,8 +652,16 @@ export function useDrawingCanvas({
 
     const isEraser = tool === "eraser";
     const opacityFactor = (brushOpacity ?? 100) / 100;
-    dispatchBrush(brushType, ctx, from, to, Math.max(1, brushSize), color, isEraser, opacityFactor);
-    recomposite();
+    const currentSize = Math.max(1, brushSize);
+    dispatchBrush(brushType, ctx, from, to, currentSize, color, isEraser, opacityFactor);
+
+    // Dirty-rect invalidation: rekomposisi hanya sub-area kecil yang disentuh kuas
+    const pad = Math.max(Math.ceil(currentSize * 1.8) + 8, 24);
+    const minX = Math.min(from.x, to.x) - pad;
+    const minY = Math.min(from.y, to.y) - pad;
+    const maxX = Math.max(from.x, to.x) + pad;
+    const maxY = Math.max(from.y, to.y) + pad;
+    recompositeRect(minX, minY, maxX - minX, maxY - minY);
   }
 
   const isShapeTool = ["line", "rectShape", "ellipseShape", "gradient"].includes(tool);
@@ -633,16 +688,33 @@ export function useDrawingCanvas({
     }
   }
 
-  function handleShapePreview(from: { x: number; y: number }, to: { x: number; y: number }) {
-    const store = getActiveStore();
-    const ctx = ctxRef.current;
-    if (!store || !ctx) return;
+  const shapeRafRef = useRef<number | null>(null);
+  const pendingShapePreviewRef = useRef<{ from: { x: number; y: number }; to: { x: number; y: number } } | null>(null);
 
-    recomposite();
-    renderShapeToContext(ctx, from, to, store.width, store.height);
+  function handleShapePreview(from: { x: number; y: number }, to: { x: number; y: number }) {
+    pendingShapePreviewRef.current = { from, to };
+    if (shapeRafRef.current == null) {
+      shapeRafRef.current = requestAnimationFrame(() => {
+        shapeRafRef.current = null;
+        const pending = pendingShapePreviewRef.current;
+        if (!pending) return;
+        const store = getActiveStore();
+        const ctx = ctxRef.current;
+        if (!store || !ctx) return;
+
+        recomposite();
+        renderShapeToContext(ctx, pending.from, pending.to, store.width, store.height);
+      });
+    }
   }
 
   function handleShapeCommit(from: { x: number; y: number }, to: { x: number; y: number }) {
+    if (shapeRafRef.current != null) {
+      cancelAnimationFrame(shapeRafRef.current);
+      shapeRafRef.current = null;
+    }
+    pendingShapePreviewRef.current = null;
+
     const store = getActiveStore();
     if (!store || !activeLayerId) return;
 

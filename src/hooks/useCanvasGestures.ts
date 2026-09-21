@@ -70,7 +70,6 @@ export function useCanvasGestures({
   const activePointers = useRef<Map<number, PointerInfo>>(new Map());
   const isGestureActive = useRef(false);
   const ignoreUntilAllUp = useRef(false);
-  const strokePreSnapshot = useRef<ImageData | null>(null);
   const gestureState = useRef<GestureState | null>(null);
 
   const isDrawing = useRef(false);
@@ -121,7 +120,7 @@ export function useCanvasGestures({
       return;
     }
 
-    if (!isDrawing.current || !strokePreSnapshot.current) return;
+    if (!isDrawing.current) return;
 
     isDrawing.current = false;
     lastPoint.current = null;
@@ -130,17 +129,14 @@ export function useCanvasGestures({
     if (store && activeLayerId) {
       const layerCanvas = store.layerCanvases.get(activeLayerId);
       const ctx = layerCanvas?.getContext("2d");
-      if (ctx && strokePreSnapshot.current) {
-        ctx.putImageData(strokePreSnapshot.current, 0, 0);
+      const stack = store.history.get(activeLayerId);
+      const snapshot = stack?.pop();
+      if (ctx && layerCanvas && snapshot) {
+        ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+        ctx.drawImage(snapshot, 0, 0);
         recomposite();
       }
-
-      // Hapus entry history yang baru saja ditambahkan
-      const stack = store.history.get(activeLayerId);
-      if (stack && stack.length > 0) stack.pop();
     }
-
-    strokePreSnapshot.current = null;
   }
 
   // ── Mulai gesture 2 jari ──────────────────────────────────────────────────
@@ -234,13 +230,6 @@ export function useCanvasGestures({
         lastPoint.current = { x: docPt.x, y: docPt.y, pressure: 0.5 };
         onShapePreview?.(shapeStartPoint.current, shapeStartPoint.current);
         return;
-      }
-
-      // Simpan snapshot sebelum stroke untuk keperluan revert gesture
-      const layerCanvas = store.layerCanvases.get(activeLayerId);
-      const ctx = layerCanvas?.getContext("2d");
-      if (ctx && layerCanvas) {
-        strokePreSnapshot.current = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
       }
 
       pushHistory();
@@ -383,7 +372,6 @@ export function useCanvasGestures({
       const wasDrawing = isDrawing.current;
       isDrawing.current = false;
       lastPoint.current = null;
-      strokePreSnapshot.current = null;
       ignoreUntilAllUp.current = false;
       if (wasDrawing) {
         onStrokeComplete?.();
