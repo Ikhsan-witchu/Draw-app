@@ -151,14 +151,12 @@ export function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
 // ── Canvas Helpers ────────────────────────────────────────────────────────────
 
 export function createLayerCanvas(width: number, height: number): HTMLCanvasElement {
-  const dpr = window.devicePixelRatio || 1;
   const canvas = document.createElement("canvas");
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  canvas.width = Math.round(width);
+  canvas.height = Math.round(height);
 
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.scale(dpr, dpr);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
   }

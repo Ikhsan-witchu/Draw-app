@@ -255,13 +255,11 @@ export function useDrawingCanvas({
     const store = getActiveStore();
     const canvas = canvasRef.current;
     if (store && canvas) {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(store.width * dpr);
-      canvas.height = Math.round(store.height * dpr);
+      canvas.width = store.width;
+      canvas.height = store.height;
 
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.scale(dpr, dpr);
         ctxRef.current = ctx;
       }
 
@@ -335,16 +333,11 @@ export function useDrawingCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const targetW = Math.round(store.width * dpr);
-    const targetH = Math.round(store.height * dpr);
-
-    if (canvas.width !== targetW || canvas.height !== targetH || !ctxRef.current) {
-      canvas.width = targetW;
-      canvas.height = targetH;
+    if (canvas.width !== store.width || canvas.height !== store.height || !ctxRef.current) {
+      canvas.width = store.width;
+      canvas.height = store.height;
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.scale(dpr, dpr);
         ctxRef.current = ctx;
       }
     }
@@ -608,9 +601,8 @@ export function useDrawingCanvas({
     if (!ctx || !layerCanvas) return;
 
     const point = docPointFromClient(clientX, clientY);
-    const dpr = window.devicePixelRatio || 1;
-    const px = Math.floor(point.x * dpr);
-    const py = Math.floor(point.y * dpr);
+    const px = Math.floor(point.x);
+    const py = Math.floor(point.y);
     if (px < 0 || py < 0 || px >= layerCanvas.width || py >= layerCanvas.height) return;
 
     pushHistory();
@@ -629,10 +621,9 @@ export function useDrawingCanvas({
     if (!ctx || !store) return;
 
     const point = docPointFromClient(clientX, clientY);
-    const dpr = window.devicePixelRatio || 1;
-    const px = Math.floor(point.x * dpr);
-    const py = Math.floor(point.y * dpr);
-    if (px < 0 || py < 0 || px >= store.width * dpr || py >= store.height * dpr) return;
+    const px = Math.floor(point.x);
+    const py = Math.floor(point.y);
+    if (px < 0 || py < 0 || px >= store.width || py >= store.height) return;
 
     const pixel = ctx.getImageData(px, py, 1, 1).data;
     onColorPick?.(rgbToHsl(pixel[0], pixel[1], pixel[2]));
