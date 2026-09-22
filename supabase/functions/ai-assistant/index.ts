@@ -8,23 +8,13 @@ const corsHeaders = {
 
 const recommendToolDeclaration = {
   name: "recommend_drawing_tool",
-  description:
-    "Rekomendasikan tool gambar, jenis kuas, ukuran px, opasitas %, warna HEX, dan urutan langkah menggambar untuk membantu user.",
+  description: "Rekomendasikan tool gambar, jenis kuas, ukuran px, opasitas %, warna HEX, dan urutan langkah menggambar untuk membantu user.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       tool: {
         type: Type.STRING,
-        enum: [
-          "brush",
-          "eraser",
-          "line",
-          "rectShape",
-          "ellipseShape",
-          "gradient",
-          "bucket",
-          "eyedropper",
-        ],
+        enum: ["brush", "eraser", "line", "rectShape", "ellipseShape", "gradient", "bucket", "eyedropper"],
         description: "Tool menggambar yang dipilih",
       },
       brush_type: {
@@ -43,15 +33,9 @@ const recommendToolDeclaration = {
 };
 
 const SYSTEM_INSTRUCTION = `Anda adalah AI Drawing Assistant ramah, suportif, dan ahli seni digital untuk aplikasi "Draw App".
-Aplikasi ini memiliki tool & kuas berikut:
-- Tools: brush, eraser, line, rectShape, ellipseShape, gradient, bucket, eyedropper.
-- Tipe Kuas: pen, round, flat, feather, marker, pencil2, airbrush.
-
-Aturan Kerja:
-1. Berikan panduan menggambar yang jelas, mudah dipahami bahkan untuk pemula.
-2. Jika ada gambar kanvas yang dikirim, analisis progres gambar tersebut secara visual dan berikan saran langkah berikutnya.
-3. SETIAP KALI Anda menyarankan tool atau parameter tertentu, ANDA HARUS MEMANGGIL function "recommend_drawing_tool".
-4. Gunakan Bahasa Indonesia yang ramah, sopan, dan inspiratif.`;
+Tools: brush, eraser, line, rectShape, ellipseShape, gradient, bucket, eyedropper.
+Kuas: pen, round, flat, feather, marker, pencil2, airbrush.
+Jika menyarankan tool atau parameter, SELALU panggil function "recommend_drawing_tool". Gunakan Bahasa Indonesia yang ramah.`;
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -66,13 +50,6 @@ serve(async (req) => {
     }
 
     const { messages } = await req.json();
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: "Pesan tidak boleh kosong." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const modelName = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
     const ai = new GoogleGenAI({ apiKey });
 
@@ -114,16 +91,16 @@ serve(async (req) => {
     if (response.functionCalls && response.functionCalls.length > 0) {
       const call = response.functionCalls[0];
       if (call.name === "recommend_drawing_tool" && call.args) {
-        const args = call.args as Record<string, unknown>;
+        const args = call.args;
         recommendation = {
           id: "rec-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
-          tool: (args.tool as string) || "brush",
-          brush_type: (args.brush_type as string) || undefined,
+          tool: args.tool || "brush",
+          brush_type: args.brush_type || undefined,
           brush_size_px: Number(args.brush_size_px) || 8,
           opacity_percent: Number(args.opacity_percent) || 100,
-          color_hex: (args.color_hex as string) || undefined,
+          color_hex: args.color_hex || undefined,
           steps: Array.isArray(args.steps) ? args.steps : [String(args.steps || "")],
-          explanation: (args.explanation as string) || "Rekomendasi tool dari AI Assistant",
+          explanation: args.explanation || "Rekomendasi tool dari AI Assistant",
           status: "pending",
         };
         if (!reply.trim()) reply = recommendation.explanation;
@@ -132,13 +109,12 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({ reply: reply.trim(), recommendation }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : "Gagal memproses permintaan AI.";
+  } catch (err) {
     return new Response(
-      JSON.stringify({ error: errorMsg }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ error: err.message || "Gagal memproses permintaan AI" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
