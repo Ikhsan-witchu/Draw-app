@@ -104,7 +104,7 @@ export async function processAIChatRequest(messages: RequestMessage[]): Promise<
     );
   }
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+  const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
   const ai = new GoogleGenAI({ apiKey });
 
   // Format history messages untuk Gemini API contents
