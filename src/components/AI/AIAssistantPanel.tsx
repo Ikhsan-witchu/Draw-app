@@ -159,7 +159,8 @@ export function AIAssistantPanel({
         image: m.imagePreview,
       }));
 
-      const res = await fetch("/api/chat", {
+      const apiUrl = (import.meta.env.VITE_AI_API_URL as string) || "/api/chat";
+      const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: payloadMessages }),
