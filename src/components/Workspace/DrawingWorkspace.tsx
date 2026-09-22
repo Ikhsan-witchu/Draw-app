@@ -31,6 +31,9 @@ import {
 import type { DockZone, DropPosition, PanelId } from "./types";
 import NewImageDialog, { type DocumentSize } from "../Start/NewImageDialog";
 import { loadActiveAppState, saveActiveAppState } from "../../utils/persistence";
+import { Sparkles } from "lucide-react";
+import { AIAssistantPanel } from "../AI/AIAssistantPanel";
+import type { WorkspaceToolSetters } from "../../utils/aiToolBridge";
 
 // Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
 const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
@@ -254,7 +257,19 @@ export default function DrawingWorkspace({
   });
 
   const [showNewDialog, setShowNewDialog] = useState(false);
+  const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const openFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const toolSetters = useMemo<WorkspaceToolSetters>(
+    () => ({
+      setActiveTool,
+      setActiveBrush,
+      setBrushSize,
+      setBrushOpacity,
+      handleColorPick,
+    }),
+    [handleColorPick],
+  );
 
   // Mobile bottom sheets
   const [mobileColorOpen, setMobileColorOpen] = useState(false);
@@ -496,6 +511,8 @@ export default function DrawingWorkspace({
           onNewFile={() => setShowNewDialog(true)}
           onOpenFile={onOpenTabFile}
           onCloseTab={() => activeTabId && onCloseTab(activeTabId)}
+          onOpenAI={() => setIsAIAssistantOpen((p) => !p)}
+          isAIOpen={isAIAssistantOpen}
           color={color}
           tabTitle={activeTab?.title ?? ""}
         />
@@ -660,6 +677,15 @@ export default function DrawingWorkspace({
           </div>
         </BottomSheet>
 
+        <AIAssistantPanel
+          key={activeTabId ?? "default"}
+          isOpen={isAIAssistantOpen}
+          onClose={() => setIsAIAssistantOpen(false)}
+          activeTabId={activeTabId}
+          canvasRef={drawing.canvasRef}
+          setters={toolSetters}
+        />
+
         {showNewDialog && (
           <NewImageDialog
             onCreate={(size) => {
@@ -696,6 +722,19 @@ export default function DrawingWorkspace({
             isEraser={activeTool === "eraser"}
             compact={false}
           />
+          <div className="w-px h-5 bg-neutral-700 shrink-0" />
+          <button
+            onClick={() => setIsAIAssistantOpen((p) => !p)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all active:scale-95 ${
+              isAIAssistantOpen
+                ? "bg-indigo-600 text-white border-indigo-500 shadow-md"
+                : "bg-neutral-800/80 hover:bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700"
+            }`}
+            title="Buka AI Drawing Assistant"
+          >
+            <Sparkles size={14} className={isAIAssistantOpen ? "text-yellow-300 animate-pulse" : "text-indigo-400"} />
+            <span>AI Assistant</span>
+          </button>
         </div>
       </div>
 
@@ -799,6 +838,15 @@ export default function DrawingWorkspace({
           onCancel={() => setShowNewDialog(false)}
         />
       )}
+
+      <AIAssistantPanel
+        key={activeTabId ?? "default"}
+        isOpen={isAIAssistantOpen}
+        onClose={() => setIsAIAssistantOpen(false)}
+        activeTabId={activeTabId}
+        canvasRef={drawing.canvasRef}
+        setters={toolSetters}
+      />
     </div>
   );
 }

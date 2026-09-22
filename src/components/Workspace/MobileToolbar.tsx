@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Save,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 import type { ToolItem } from "./types";
 import { BrushSizeControl } from "./BrushSizeControl";
@@ -25,6 +26,8 @@ export interface MobileTopBarProps {
   onNewFile: () => void;
   onOpenFile: (file: File) => void;
   onCloseTab: () => void;
+  onOpenAI?: () => void;
+  isAIOpen?: boolean;
   color: string;
   tabTitle: string;
 }
@@ -38,6 +41,8 @@ export function MobileTopBar({
   onNewFile,
   onOpenFile,
   onCloseTab,
+  onOpenAI,
+  isAIOpen,
   color,
   tabTitle,
 }: MobileTopBarProps) {
@@ -94,6 +99,20 @@ export function MobileTopBar({
           >
             <Download size={17} />
           </button>
+
+          {onOpenAI && (
+            <button
+              onClick={onOpenAI}
+              className={`p-2 rounded-lg transition-colors ${
+                isAIOpen
+                  ? "bg-indigo-600 text-white"
+                  : "text-indigo-400 hover:text-indigo-300 hover:bg-neutral-800"
+              }`}
+              title="AI Assistant"
+            >
+              <Sparkles size={17} />
+            </button>
+          )}
         </div>
       </div>
 
