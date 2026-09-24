@@ -1,6 +1,8 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 function aiApiPlugin(): Plugin {
   return {
@@ -22,8 +24,9 @@ function aiApiPlugin(): Plugin {
         req.on('end', async () => {
           try {
             const data = JSON.parse(body);
-            const servicePath = './src/services/aiAssistantService';
-            const serviceModule = (await import(servicePath)) as {
+            const serviceFilePath = path.resolve(process.cwd(), 'src/services/aiAssistantService.ts');
+            const serviceUrl = pathToFileURL(serviceFilePath).href;
+            const serviceModule = (await import(serviceUrl)) as {
               processAIChatRequest: (msgs: unknown[]) => Promise<unknown>;
             };
             const result = await serviceModule.processAIChatRequest(

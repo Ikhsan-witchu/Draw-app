@@ -93,7 +93,10 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "Pesan tidak boleh kosong." });
     }
 
-    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    let modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+    if (modelName.includes("1.5") || modelName.includes("2.5") || modelName === "1.5") {
+      modelName = "gemini-3.6-flash";
+    }
     const ai = new GoogleGenAI({ apiKey });
 
     const contents = [];
