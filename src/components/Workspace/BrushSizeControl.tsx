@@ -8,7 +8,7 @@ interface BrushSizeControlProps {
   compact?: boolean;
 }
 
-const PRESET_SIZES = [2, 5, 10, 20, 40, 80];
+const PRESET_SIZES = [2, 5, 10, 20, 40, 80, 100];
 
 export function BrushSizeControl({
   size,
@@ -64,7 +64,7 @@ export function BrushSizeControl({
             max={250}
             value={size}
             onChange={(e) => onChange(Math.max(1, Math.min(250, Number(e.target.value))))}
-            className="w-7 bg-transparent text-xs text-center text-white focus:outline-none"
+            className="w-9 bg-transparent text-xs text-center text-white focus:outline-none"
           />
           <span className="text-[10px] text-neutral-400">px</span>
         </div>
