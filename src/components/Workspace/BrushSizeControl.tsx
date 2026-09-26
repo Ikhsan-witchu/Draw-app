@@ -8,7 +8,7 @@ interface BrushSizeControlProps {
   compact?: boolean;
 }
 
-const PRESET_SIZES = [2, 5, 10, 20, 40, 80, 100];
+const PRESET_SIZES = [2, 5, 10, 25, 50, 100, 250, 500];
 
 export function BrushSizeControl({
   size,
@@ -49,7 +49,7 @@ export function BrushSizeControl({
         <input
           type="range"
           min={1}
-          max={100}
+          max={500}
           value={size}
           onChange={(e) => onChange(Number(e.target.value))}
           className="w-24 sm:w-32 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white"
@@ -57,14 +57,14 @@ export function BrushSizeControl({
         />
 
         {/* Number input / Badge */}
-        <div className="flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded px-2 py-0.5 min-w-[52px] justify-center">
+        <div className="flex items-center gap-0.5 bg-neutral-800 border border-neutral-700 rounded px-1.5 py-0.5 min-w-[58px] justify-center">
           <input
             type="number"
             min={1}
-            max={250}
+            max={500}
             value={size}
-            onChange={(e) => onChange(Math.max(1, Math.min(250, Number(e.target.value))))}
-            className="w-9 bg-transparent text-xs text-center text-white focus:outline-none"
+            onChange={(e) => onChange(Math.max(1, Math.min(500, Number(e.target.value))))}
+            className="w-10 bg-transparent text-xs text-center text-white focus:outline-none"
           />
           <span className="text-[10px] text-neutral-400">px</span>
         </div>
@@ -127,7 +127,7 @@ export function BrushSizeControl({
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="absolute top-full right-0 mt-2 p-3 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl z-50 min-w-[220px] animate-slide-up pointer-events-auto"
+            className="absolute top-full right-0 mt-2 p-3 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl z-50 min-w-[230px] animate-slide-up pointer-events-auto"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-neutral-400 font-medium">Ukuran Pen/Brush</span>
@@ -140,14 +140,14 @@ export function BrushSizeControl({
             <input
               type="range"
               min={1}
-              max={100}
+              max={500}
               value={size}
               onChange={(e) => onChange(Number(e.target.value))}
               className="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white mb-3"
             />
 
             {/* Preset Buttons */}
-            <div className="grid grid-cols-6 gap-1 mb-3">
+            <div className="grid grid-cols-4 gap-1 mb-3">
               {PRESET_SIZES.map((preset) => (
                 <button
                   key={preset}
@@ -158,7 +158,7 @@ export function BrushSizeControl({
                       : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
                   }`}
                 >
-                  {preset}
+                  {preset}px
                 </button>
               ))}
             </div>

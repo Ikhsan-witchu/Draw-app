@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { hsvToRgbString } from "../../utils/canvasUtils";
 
 interface HueValue {
   hue: number;
@@ -78,7 +79,8 @@ export function HuePanel({ hue, sat, val, onChange }: HuePanelProps) {
     updateHue(e.clientY);
   }
 
-  const currentColor = `hsl(${hue}, ${sat}%, ${val}%)`;
+  const currentColor = hsvToRgbString(hue, sat, val);
+
 
   return (
     <div className="p-3 flex flex-col gap-3 h-full">

@@ -34,6 +34,8 @@ import { loadActiveAppState, saveActiveAppState } from "../../utils/persistence"
 import { Sparkles, Undo2, Redo2 } from "lucide-react";
 import { AIAssistantPanel } from "../AI/AIAssistantPanel";
 import type { WorkspaceToolSetters } from "../../utils/aiToolBridge";
+import { hsvToRgbString } from "../../utils/canvasUtils";
+
 
 
 // Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
@@ -193,7 +195,7 @@ export default function DrawingWorkspace({
     const saved = loadActiveAppState();
     return saved?.color?.val ?? 85;
   });
-  const color = useMemo(() => `hsl(${hue}, ${sat}%, ${val}%)`, [hue, sat, val]);
+  const color = useMemo(() => hsvToRgbString(hue, sat, val), [hue, sat, val]);
 
   // Sinkronisasi tool, warna, dan layout panel ke persistence (didebounce 300ms agar resize/slider smooth)
   useEffect(() => {

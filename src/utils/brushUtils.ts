@@ -344,42 +344,41 @@ export function drawAirbrush(
   opacity: number = 1,
 ): void {
   const d = dist(from, to);
-  // Langkah per jarak — airbrush lebih jarang agar tidak terlalu opak
-  const steps = Math.max(1, Math.ceil(d / (size * 0.4)));
-  const radius = size * 1.2;
+  const r = Math.max(1, size * 0.5);
+  // Jarak antar langkah ~20% dari radius agar gradasi lembut & menyatu tanpa jeda
+  const stepDist = Math.max(1, r * 0.2);
+  const steps = Math.max(1, Math.ceil(d / stepDist));
   const opFactor = Math.max(0, Math.min(1, opacity));
 
   ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
-
   const [cr, cg, cb] = isEraser ? [0, 0, 0] : parseColor(color);
+
+  // Intensitas per dab: lembut tapi langsung terlihat jelas saat digores
+  const pressureFactor = to.pressure !== 0.5 ? 0.4 + 0.6 * to.pressure : 1;
+  const baseAlpha = 0.18 * opFactor * pressureFactor;
 
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const x = lerp(from.x, to.x, t);
     const y = lerp(from.y, to.y, t);
 
-    // Scatter partikel kecil di dalam radius
-    const particleCount = 6 + Math.floor(Math.random() * 6);
-    for (let p = 0; p < particleCount; p++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * radius;
-      const px = x + Math.cos(angle) * r;
-      const py = y + Math.sin(angle) * r;
-
-      // Semakin jauh dari pusat, semakin transparan
-      const falloff = 1 - (r / radius);
-      ctx.globalAlpha = (isEraser
-        ? falloff * 0.04
-        : falloff * 0.035 * (0.7 + 0.3 * to.pressure)) * opFactor;
-      ctx.fillStyle = isEraser
-        ? "rgba(0,0,0,1)"
-        : `rgb(${cr},${cg},${cb})`;
-
-      const dotR = Math.max(0.5, Math.random() * 1.6);
-      ctx.beginPath();
-      ctx.arc(px, py, dotR, 0, Math.PI * 2);
-      ctx.fill();
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    if (isEraser) {
+      grad.addColorStop(0, `rgba(0,0,0,${baseAlpha})`);
+      grad.addColorStop(0.5, `rgba(0,0,0,${baseAlpha * 0.45})`);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+    } else {
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${baseAlpha})`);
+      grad.addColorStop(0.4, `rgba(${cr},${cg},${cb},${baseAlpha * 0.55})`);
+      grad.addColorStop(0.8, `rgba(${cr},${cg},${cb},${baseAlpha * 0.15})`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
     }
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   ctx.globalAlpha = 1;

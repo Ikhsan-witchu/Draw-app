@@ -17,30 +17,66 @@ export function hslStringToRgb(hslString: string): [number, number, number] {
   return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
 }
 
-export function rgbToHsl(r: number, g: number, b: number): { hue: number; sat: number; val: number } {
+export function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
+  const sn = Math.max(0, Math.min(100, s)) / 100;
+  const vn = Math.max(0, Math.min(100, v)) / 100;
+  const c = vn * sn;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  const m = vn - c;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hp >= 0 && hp < 1) { r = c; g = x; b = 0; }
+  else if (hp >= 1 && hp < 2) { r = x; g = c; b = 0; }
+  else if (hp >= 2 && hp < 3) { r = 0; g = c; b = x; }
+  else if (hp >= 3 && hp < 4) { r = 0; g = x; b = c; }
+  else if (hp >= 4 && hp < 5) { r = x; g = 0; b = c; }
+  else if (hp >= 5 && hp < 6) { r = c; g = 0; b = x; }
+
+  return [
+    Math.round((r + m) * 255),
+    Math.round((g + m) * 255),
+    Math.round((b + m) * 255),
+  ];
+}
+
+export function hsvToRgbString(h: number, s: number, v: number): string {
+  const [r, g, b] = hsvToRgb(h, s, v);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+export function rgbToHsv(r: number, g: number, b: number): { hue: number; sat: number; val: number } {
   const rn = r / 255;
   const gn = g / 255;
   const bn = b / 255;
 
   const max = Math.max(rn, gn, bn);
   const min = Math.min(rn, gn, bn);
-  const l = (max + min) / 2;
+  const d = max - min;
 
   let h = 0;
-  let s = 0;
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
 
   if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-
     if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
     else if (max === gn) h = (bn - rn) / d + 2;
     else h = (rn - gn) / d + 4;
-
     h /= 6;
   }
 
-  return { hue: Math.round(h * 360), sat: Math.round(s * 100), val: Math.round(l * 100) };
+  return {
+    hue: Math.round(h * 360),
+    sat: Math.round(s * 100),
+    val: Math.round(v * 100),
+  };
+}
+
+export function rgbToHsl(r: number, g: number, b: number): { hue: number; sat: number; val: number } {
+  // Gunakan rgbToHsv yang konsisten dengan panel warna HSV
+  return rgbToHsv(r, g, b);
 }
 
 // ── Flood Fill ────────────────────────────────────────────────────────────────
