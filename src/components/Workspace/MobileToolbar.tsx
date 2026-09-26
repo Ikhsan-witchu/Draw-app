@@ -2,6 +2,7 @@ import { useState, useRef, type ChangeEvent } from "react";
 import {
   Menu,
   Undo2,
+  Redo2,
   Download,
   Layers,
   Paintbrush,
@@ -15,6 +16,7 @@ import {
 import type { ToolItem } from "./types";
 import { BrushSizeControl } from "./BrushSizeControl";
 
+
 // ── Mobile Top Bar ─────────────────────────────────────────────────────────────
 
 export interface MobileTopBarProps {
@@ -22,6 +24,9 @@ export interface MobileTopBarProps {
   brushSize: number;
   onBrushSizeChange: (size: number) => void;
   onUndo: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onSave: () => void;
   onNewFile: () => void;
   onOpenFile: (file: File) => void;
@@ -37,6 +42,9 @@ export function MobileTopBar({
   brushSize,
   onBrushSizeChange,
   onUndo,
+  onRedo,
+  canUndo = true,
+  canRedo = true,
   onSave,
   onNewFile,
   onOpenFile,
@@ -78,11 +86,23 @@ export function MobileTopBar({
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={onUndo}
-            className="p-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 active:bg-neutral-700 transition-colors"
-            title="Undo"
+            disabled={!canUndo}
+            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 active:bg-neutral-700 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Urungkan (Undo)"
           >
-            <Undo2 size={17} />
+            <Undo2 size={16} />
           </button>
+
+          {onRedo && (
+            <button
+              onClick={onRedo}
+              disabled={!canRedo}
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 active:bg-neutral-700 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+              title="Ulangi (Redo)"
+            >
+              <Redo2 size={16} />
+            </button>
+          )}
 
           <BrushSizeControl
             size={brushSize}
@@ -91,6 +111,7 @@ export function MobileTopBar({
             isEraser={activeTool === "eraser"}
             compact={true}
           />
+
 
           <button
             onClick={onSave}

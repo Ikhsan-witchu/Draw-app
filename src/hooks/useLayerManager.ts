@@ -95,6 +95,43 @@ export function useLayerManager({
     onLayerStructureChange?.();
   }
 
+  function toggleLayerClipped(id: string) {
+    const store = getActiveStore();
+    // Cari index layer — layer paling bawah tidak bisa di-clip
+    const bottomIndex = layers.length - 1;
+    const targetIndex = layers.findIndex((l) => l.id === id);
+    if (targetIndex === bottomIndex) return; // Layer terbawah adalah base, tidak bisa klip ke bawahnya
+
+    const updater = (prev: LayerMeta[]) =>
+      prev.map((l, idx) => {
+        if (l.id === id) {
+          // Jika layer paling bawah, clipped selalu false
+          if (idx === prev.length - 1) return { ...l, clipped: false };
+          return { ...l, clipped: !l.clipped };
+        }
+        return l;
+      });
+
+    if (store) {
+      store.layers = updater(store.layers);
+    }
+    setLayers(updater);
+    recomposite();
+    onLayerStructureChange?.();
+  }
+
+  function toggleLayerAlphaLock(id: string) {
+    const store = getActiveStore();
+    const updater = (prev: LayerMeta[]) =>
+      prev.map((l) => (l.id === id ? { ...l, alphaLocked: !l.alphaLocked } : l));
+
+    if (store) {
+      store.layers = updater(store.layers);
+    }
+    setLayers(updater);
+    onLayerStructureChange?.();
+  }
+
   function setLayerOpacity(id: string, opacity: number) {
     const clamped = Math.max(0, Math.min(100, Math.round(opacity)));
     const store = getActiveStore();
@@ -134,6 +171,15 @@ export function useLayerManager({
       const insertIndex = position === "before" ? targetIndex : targetIndex + 1;
       const next = [...withoutDragged];
       next.splice(insertIndex, 0, dragged);
+
+      // Pastikan layer terbawah tidak di-clip
+      if (next.length > 0) {
+        const lastIdx = next.length - 1;
+        if (next[lastIdx].clipped) {
+          next[lastIdx] = { ...next[lastIdx], clipped: false };
+        }
+      }
+
       const store = getActiveStore();
       if (store) {
         store.layers = next;
@@ -200,6 +246,8 @@ export function useLayerManager({
     deleteLayer,
     toggleLayerVisibility,
     toggleLayerLock,
+    toggleLayerClipped,
+    toggleLayerAlphaLock,
     setLayerOpacity,
     setLayerBlendMode,
     selectLayer,

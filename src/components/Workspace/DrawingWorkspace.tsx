@@ -31,9 +31,10 @@ import {
 import type { DockZone, DropPosition, PanelId } from "./types";
 import NewImageDialog, { type DocumentSize } from "../Start/NewImageDialog";
 import { loadActiveAppState, saveActiveAppState } from "../../utils/persistence";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Undo2, Redo2 } from "lucide-react";
 import { AIAssistantPanel } from "../AI/AIAssistantPanel";
 import type { WorkspaceToolSetters } from "../../utils/aiToolBridge";
+
 
 // Lebar "pas" buat tiap jenis panel — dipakai buat nentuin lebar default sidebar
 const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
@@ -425,6 +426,8 @@ export default function DrawingWorkspace({
         onDeleteLayer={drawing.deleteLayer}
         onToggleLayerVisible={drawing.toggleLayerVisibility}
         onToggleLayerLock={drawing.toggleLayerLock}
+        onToggleLayerClipped={drawing.toggleLayerClipped}
+        onToggleLayerAlphaLock={drawing.toggleLayerAlphaLock}
         onSelectLayer={drawing.selectLayer}
         onReorderLayer={drawing.reorderLayer}
         onLayerOpacityChange={drawing.setLayerOpacity}
@@ -450,6 +453,8 @@ export default function DrawingWorkspace({
     drawing.deleteLayer,
     drawing.toggleLayerVisibility,
     drawing.toggleLayerLock,
+    drawing.toggleLayerClipped,
+    drawing.toggleLayerAlphaLock,
     drawing.selectLayer,
     drawing.reorderLayer,
     drawing.setLayerOpacity,
@@ -464,6 +469,14 @@ export default function DrawingWorkspace({
       { type: "action", label: "Open", onClick: () => openFileInputRef.current?.click() },
       { type: "action", label: "Save", shortcut: "Ctrl+S", onClick: () => drawing.exportImage() },
       { type: "action", label: "Close", onClick: () => activeTabId && onCloseTab(activeTabId) },
+    ],
+  };
+
+  const editMenu: MenuDef = {
+    label: "Edit",
+    items: [
+      { type: "action", label: "Undo", shortcut: "Ctrl+Z", onClick: () => drawing.undo() },
+      { type: "action", label: "Redo", shortcut: "Ctrl+Y", onClick: () => drawing.redo() },
     ],
   };
 
@@ -507,6 +520,9 @@ export default function DrawingWorkspace({
           brushSize={brushSize}
           onBrushSizeChange={setBrushSize}
           onUndo={drawing.undo}
+          onRedo={drawing.redo}
+          canUndo={drawing.canUndo}
+          canRedo={drawing.canRedo}
           onSave={() => drawing.exportImage()}
           onNewFile={() => setShowNewDialog(true)}
           onOpenFile={onOpenTabFile}
@@ -516,6 +532,7 @@ export default function DrawingWorkspace({
           color={color}
           tabTitle={activeTab?.title ?? ""}
         />
+
 
         {/* Fullscreen canvas in the middle */}
         <div className="flex-1 min-h-0 relative">
@@ -543,6 +560,24 @@ export default function DrawingWorkspace({
             canvasHeight={drawing.canvasHeight}
             activeTool={activeTool}
             brushSize={brushSize}
+            textToolState={drawing.textTool.textState}
+            textFontSize={drawing.textTool.fontSize}
+            textColor={color}
+            onTextChange={drawing.textTool.updateText}
+            onTextCommit={(t) =>
+              drawing.textTool.commitText(
+                t,
+                drawing.textTool.textState.docX,
+                drawing.textTool.textState.docY,
+              )
+            }
+            onTextCancel={drawing.textTool.cancelText}
+            selectionState={drawing.selectionTool.selState}
+            selectionDashOffset={drawing.selectionTool.dashOffset}
+            onSelectionCut={() => drawing.selectionTool.copySelection(true)}
+            onSelectionCopy={() => drawing.selectionTool.copySelection(false)}
+            onSelectionFill={drawing.selectionTool.fillSelection}
+            onSelectionClear={drawing.selectionTool.clearSelection}
           />
         </div>
 
@@ -669,6 +704,8 @@ export default function DrawingWorkspace({
               onDelete={drawing.deleteLayer}
               onToggleVisible={drawing.toggleLayerVisibility}
               onToggleLock={drawing.toggleLayerLock}
+              onToggleClipped={drawing.toggleLayerClipped}
+              onToggleAlphaLock={drawing.toggleLayerAlphaLock}
               onSelect={drawing.selectLayer}
               onReorder={drawing.reorderLayer}
               onOpacityChange={drawing.setLayerOpacity}
@@ -706,8 +743,29 @@ export default function DrawingWorkspace({
     <div className="flex flex-col h-full h-dvh overflow-hidden bg-neutral-950 select-none">
       {/* Top bar */}
       <div className="relative z-30 h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
-        <MenuBar menus={[fileMenu, workspaceMenu]} />
         <div className="flex items-center gap-3">
+          <MenuBar menus={[fileMenu, editMenu, workspaceMenu]} />
+          <div className="flex items-center gap-0.5 bg-neutral-800/80 rounded-lg p-0.5 border border-neutral-700/60">
+            <button
+              onClick={() => drawing.undo()}
+              disabled={!drawing.canUndo}
+              className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-700/70 active:scale-95 transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:active:scale-100 cursor-pointer disabled:cursor-not-allowed"
+              title="Urungkan (Undo) — Ctrl+Z"
+            >
+              <Undo2 size={15} />
+            </button>
+            <button
+              onClick={() => drawing.redo()}
+              disabled={!drawing.canRedo}
+              className="p-1.5 rounded text-neutral-300 hover:text-white hover:bg-neutral-700/70 active:scale-95 transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:active:scale-100 cursor-pointer disabled:cursor-not-allowed"
+              title="Ulangi (Redo) — Ctrl+Y / Ctrl+Shift+Z"
+            >
+              <Redo2 size={15} />
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+
           <BrushOpacityControl
             opacity={brushOpacity}
             onChange={setBrushOpacity}
@@ -790,6 +848,24 @@ export default function DrawingWorkspace({
               canvasHeight={drawing.canvasHeight}
               activeTool={activeTool}
               brushSize={brushSize}
+              textToolState={drawing.textTool.textState}
+              textFontSize={drawing.textTool.fontSize}
+              textColor={color}
+              onTextChange={drawing.textTool.updateText}
+              onTextCommit={(t) =>
+                drawing.textTool.commitText(
+                  t,
+                  drawing.textTool.textState.docX,
+                  drawing.textTool.textState.docY,
+                )
+              }
+              onTextCancel={drawing.textTool.cancelText}
+              selectionState={drawing.selectionTool.selState}
+              selectionDashOffset={drawing.selectionTool.dashOffset}
+              onSelectionCut={() => drawing.selectionTool.copySelection(true)}
+              onSelectionCopy={() => drawing.selectionTool.copySelection(false)}
+              onSelectionFill={drawing.selectionTool.fillSelection}
+              onSelectionClear={drawing.selectionTool.clearSelection}
             />
           </div>
 

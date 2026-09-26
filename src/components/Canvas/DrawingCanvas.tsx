@@ -8,6 +8,12 @@ import {
 import { RotateCcw, Maximize2 } from "lucide-react";
 import { TabBar } from "../Workspace/TabBar";
 import type { DocumentTab } from "../../hooks/useDrawingCanvas";
+import { TextOverlay } from "./TextOverlay";
+import { SelectionOverlay } from "./SelectionOverlay";
+import { SelectionToolbar } from "./SelectionToolbar";
+import type { TextToolState } from "../../hooks/useTextTool";
+import type { SelectionState } from "../../hooks/useSelectionTool";
+
 
 interface DrawingCanvasProps {
   viewportRef: RefObject<HTMLDivElement | null>;
@@ -33,6 +39,20 @@ interface DrawingCanvasProps {
   canvasHeight: number;
   activeTool?: string;
   brushSize?: number;
+  // Text tool
+  textToolState?: TextToolState;
+  textFontSize?: number;
+  textColor?: string;
+  onTextChange?: (text: string) => void;
+  onTextCommit?: (text: string) => void;
+  onTextCancel?: () => void;
+  // Selection tool
+  selectionState?: SelectionState;
+  selectionDashOffset?: number;
+  onSelectionCut?: () => void;
+  onSelectionCopy?: () => void;
+  onSelectionFill?: () => void;
+  onSelectionClear?: () => void;
 }
 
 export default function DrawingCanvas({
@@ -59,7 +79,20 @@ export default function DrawingCanvas({
   canvasHeight,
   activeTool = "brush",
   brushSize = 8,
+  textToolState,
+  textFontSize = 24,
+  textColor = "#000000",
+  onTextChange,
+  onTextCommit,
+  onTextCancel,
+  selectionState,
+  selectionDashOffset = 0,
+  onSelectionCut,
+  onSelectionCopy,
+  onSelectionFill,
+  onSelectionClear,
 }: DrawingCanvasProps) {
+
   const isRotated = Math.round(rotation) !== 0 && Math.round(rotation) !== 360;
   const isZoomed = Math.abs(zoom - 1) > 0.05;
 
@@ -163,7 +196,15 @@ export default function DrawingCanvas({
         ref={viewportRef}
         className="relative flex-1 min-h-0 w-full overflow-hidden bg-neutral-950 touch-none select-none"
         style={{
-          cursor: isBrushTool ? "none" : activeTool === "move" ? "grab" : "crosshair",
+          cursor: isBrushTool
+            ? "none"
+            : activeTool === "move"
+              ? "grab"
+              : activeTool === "text"
+                ? "text"
+                : activeTool === "rect" || activeTool === "lasso"
+                  ? "crosshair"
+                  : "crosshair",
         }}
         onPointerDown={handlePointerDownInternal}
         onPointerMove={handlePointerMoveInternal}
@@ -196,6 +237,17 @@ export default function DrawingCanvas({
               height: `${canvasHeight}px`,
             }}
           />
+
+          {/* ── Selection Overlay (Marching Ants) ── */}
+          {selectionState && (
+            <SelectionOverlay
+              selState={selectionState}
+              dashOffset={selectionDashOffset}
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              zoom={zoom}
+            />
+          )}
         </div>
 
         {/* Brush & Eraser Size Cursor Preview */}
@@ -231,6 +283,44 @@ export default function DrawingCanvas({
               />
             )}
           </div>
+        )}
+
+        {/* ── Selection Toolbar (Cut/Copy/Fill/Clear) ── */}
+        {selectionState && (
+          <SelectionToolbar
+            selState={selectionState}
+            zoom={zoom}
+            panX={panX}
+            panY={panY}
+            rotation={rotation}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
+            onCut={onSelectionCut ?? (() => {})}
+            onCopy={onSelectionCopy ?? (() => {})}
+            onFill={onSelectionFill ?? (() => {})}
+            onClear={onSelectionClear ?? (() => {})}
+          />
+        )}
+
+        {/* ── Text Overlay (floating textarea) ── */}
+        {textToolState && (
+          <TextOverlay
+            active={textToolState.active}
+            docX={textToolState.docX}
+            docY={textToolState.docY}
+            text={textToolState.text}
+            fontSize={textFontSize}
+            color={textColor}
+            zoom={zoom}
+            panX={panX}
+            panY={panY}
+            rotation={rotation}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
+            onChange={onTextChange ?? (() => {})}
+            onCommit={onTextCommit ?? (() => {})}
+            onCancel={onTextCancel ?? (() => {})}
+          />
         )}
 
         {/* HUD Badges for Rotation & Zoom Reset (Ibis Paint style) */}

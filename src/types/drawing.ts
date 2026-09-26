@@ -11,6 +11,8 @@ export interface LayerMeta {
   name: string;
   visible: boolean;
   locked: boolean;
+  clipped?: boolean; // Kliping mask ke layer di bawahnya
+  alphaLocked?: boolean; // Kunci transparansi (Alpha lock)
   opacity?: number; // 0 - 100 (persen)
   blendMode?: GlobalCompositeOperation;
 }
@@ -30,6 +32,7 @@ export interface TabStore {
   activeLayerId: string | null;
   layerCanvases: Map<string, HTMLCanvasElement>;
   history: Map<string, HTMLCanvasElement[]>;
+  redoHistory?: Map<string, HTMLCanvasElement[]>;
   zoom: number;
   panX: number;
   panY: number;

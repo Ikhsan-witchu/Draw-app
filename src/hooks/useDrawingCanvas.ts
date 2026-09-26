@@ -32,6 +32,9 @@ import {
 } from "../utils/persistence";
 import { useLayerManager } from "./useLayerManager";
 import { useCanvasGestures } from "./useCanvasGestures";
+import { useTextTool } from "./useTextTool";
+import { useSelectionTool } from "./useSelectionTool";
+
 
 
 // Re-export tipe yang dibutuhkan konsumen luar
@@ -111,6 +114,22 @@ export function useDrawingCanvas({
   // Ini mencegah penumpukan opacity dalam satu goresan.
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const scratchOpacityRef = useRef(1);
+
+  // Buffer reusable untuk compositing kliping mask
+  const groupCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const clipBufferRef = useRef<HTMLCanvasElement | null>(null);
+
+  function getReusableCanvas(
+    ref: { current: HTMLCanvasElement | null },
+    w: number,
+    h: number,
+  ): HTMLCanvasElement {
+    if (!ref.current || ref.current.width !== w || ref.current.height !== h) {
+      ref.current = createLayerCanvas(w, h);
+    }
+    return ref.current;
+  }
+
 
   // ── Helper: ambil store tab aktif ─────────────────────────────────────────
   function getActiveStore(): TabStore | undefined {
@@ -198,9 +217,12 @@ export function useDrawingCanvas({
         const layerOneId = generateId("layer");
 
         const backgroundCanvas = createLayerCanvas(tab.width, tab.height);
+        const bgCtx = backgroundCanvas.getContext("2d");
         if (tab.initialImage) {
-          const bgCtx = backgroundCanvas.getContext("2d");
           bgCtx?.drawImage(tab.initialImage, 0, 0, tab.width, tab.height);
+        } else if (bgCtx) {
+          bgCtx.fillStyle = "#ffffff";
+          bgCtx.fillRect(0, 0, tab.width, tab.height);
         }
 
         const fit = calculateFit(tab.width, tab.height);
@@ -228,9 +250,7 @@ export function useDrawingCanvas({
         // Tab baru selalu di-fit ke viewport agar pas menyentuh batas sidebar / bar
         needsFitRef.current.add(tab.id);
 
-        if (tab.initialImage) {
-          saveLayerCanvasBlob(tab.id, backgroundId, backgroundCanvas);
-        }
+        saveLayerCanvasBlob(tab.id, backgroundId, backgroundCanvas);
       }
 
       justInitializedRef.current.add(tab.id);
@@ -331,7 +351,36 @@ export function useDrawingCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId, tabs]);
 
-  // ── Compositing: gabungkan semua layer yang visible ke main canvas ─────────
+  // ── Helper: Render konten layer bersama scratch canvas jika sedang ada goresan ──
+  function renderLayerContentToContext(
+    targetCtx: CanvasRenderingContext2D,
+    layer: LayerMeta,
+    layerCanvas: HTMLCanvasElement,
+    w: number,
+    h: number,
+  ) {
+    if (scratchCanvasRef.current && layer.id === activeLayerId) {
+      if (layer.alphaLocked) {
+        // Gambar layer dasar, lalu overlay goresan dengan source-atop agar hanya menempel pada area bergambar
+        targetCtx.drawImage(layerCanvas, 0, 0, w, h);
+        targetCtx.save();
+        targetCtx.globalAlpha = (targetCtx.globalAlpha || 1) * scratchOpacityRef.current;
+        targetCtx.globalCompositeOperation = "source-atop";
+        targetCtx.drawImage(scratchCanvasRef.current, 0, 0, w, h);
+        targetCtx.restore();
+      } else {
+        targetCtx.drawImage(layerCanvas, 0, 0, w, h);
+        targetCtx.save();
+        targetCtx.globalAlpha = (targetCtx.globalAlpha || 1) * scratchOpacityRef.current;
+        targetCtx.drawImage(scratchCanvasRef.current, 0, 0, w, h);
+        targetCtx.restore();
+      }
+    } else {
+      targetCtx.drawImage(layerCanvas, 0, 0, w, h);
+    }
+  }
+
+  // ── Compositing: gabungkan semua layer yang visible ke main canvas (dengan dukungan Kliping Mask & Alpha Lock) ──
   function recomposite() {
     const store = getActiveStore();
     if (!store) return;
@@ -351,40 +400,115 @@ export function useDrawingCanvas({
     const ctx = ctxRef.current;
     if (!ctx) return;
 
-    const currentLayers = (store.layers && store.layers.length > 0) ? store.layers : layers;
+    const currentLayers = store.layers && store.layers.length > 0 ? store.layers : layers;
     if (!currentLayers || currentLayers.length === 0) return;
 
     ctx.clearRect(0, 0, store.width, store.height);
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, store.width, store.height);
 
-    for (let i = currentLayers.length - 1; i >= 0; i--) {
-      const layer = currentLayers[i];
-      if (!layer.visible) continue;
-      const layerCanvas = store.layerCanvases.get(layer.id);
-      if (layerCanvas) {
-        ctx.globalAlpha = (layer.opacity ?? 100) / 100;
-        ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
-        ctx.drawImage(layerCanvas, 0, 0, store.width, store.height);
-        // Overlay scratch canvas (goresan sedang berjalan) di atas layer aktif
-        if (scratchCanvasRef.current && layer.id === activeLayerId) {
-          ctx.globalAlpha = ((layer.opacity ?? 100) / 100) * scratchOpacityRef.current;
-          ctx.drawImage(scratchCanvasRef.current, 0, 0, store.width, store.height);
+    let i = currentLayers.length - 1;
+    while (i >= 0) {
+      const baseLayer = currentLayers[i];
+      if (!baseLayer.visible) {
+        // Skip base layer beserta seluruh layer yang di-clip ke atasnya
+        let j = i - 1;
+        while (j >= 0 && currentLayers[j].clipped) {
+          j--;
+        }
+        i = j;
+        continue;
+      }
+
+      // Cari rantai layer kliping tepat di atas baseLayer ini
+      let j = i - 1;
+      let hasClipped = false;
+      while (j >= 0 && currentLayers[j].clipped) {
+        if (currentLayers[j].visible) {
+          hasClipped = true;
+        }
+        j--;
+      }
+
+      const baseCanvas = store.layerCanvases.get(baseLayer.id);
+      if (!baseCanvas) {
+        i = j;
+        continue;
+      }
+
+      if (!hasClipped) {
+        // Layer biasa tanpa kliping
+        ctx.globalAlpha = (baseLayer.opacity ?? 100) / 100;
+        ctx.globalCompositeOperation = baseLayer.blendMode ?? "source-over";
+        renderLayerContentToContext(ctx, baseLayer, baseCanvas, store.width, store.height);
+      } else {
+        // Ada grup kliping mask!
+        const groupCanvas = getReusableCanvas(groupCanvasRef, store.width, store.height);
+        const gCtx = groupCanvas.getContext("2d");
+        if (gCtx) {
+          gCtx.clearRect(0, 0, store.width, store.height);
+
+          // 1. Gambar base layer (Objek asli) ke group buffer dengan alpha penuh
+          gCtx.globalAlpha = 1;
+          gCtx.globalCompositeOperation = "source-over";
+          renderLayerContentToContext(gCtx, baseLayer, baseCanvas, store.width, store.height);
+
+          // 2. Tumpuk setiap layer yang di-clip ke atas base layer (dari bawah ke atas: i-1 down to j+1)
+          for (let k = i - 1; k > j; k--) {
+            const clippedLayer = currentLayers[k];
+            if (!clippedLayer.visible) continue;
+            const clippedCanvas = store.layerCanvases.get(clippedLayer.id);
+            if (!clippedCanvas) continue;
+
+            const clipBuffer = getReusableCanvas(clipBufferRef, store.width, store.height);
+            const cCtx = clipBuffer.getContext("2d");
+            if (cCtx) {
+              cCtx.clearRect(0, 0, store.width, store.height);
+
+              // Render konten clipped layer ke clipBuffer dengan opasitasnya
+              cCtx.globalAlpha = (clippedLayer.opacity ?? 100) / 100;
+              cCtx.globalCompositeOperation = "source-over";
+              renderLayerContentToContext(cCtx, clippedLayer, clippedCanvas, store.width, store.height);
+
+              // Masking: pertahankan goresan hanya di dalam batas siluet groupCanvas (objek baseLayer)
+              cCtx.globalAlpha = 1;
+              cCtx.globalCompositeOperation = "destination-in";
+              cCtx.drawImage(groupCanvas, 0, 0, store.width, store.height);
+
+              // Gambar hasil masking ke groupCanvas menggunakan blendMode clippedLayer
+              gCtx.globalAlpha = 1;
+              gCtx.globalCompositeOperation = clippedLayer.blendMode ?? "source-over";
+              gCtx.drawImage(clipBuffer, 0, 0, store.width, store.height);
+            }
+          }
+
+          // 3. Komposit groupCanvas (Objek + semua shading/highlight klipingnya) ke main canvas
+          ctx.globalAlpha = (baseLayer.opacity ?? 100) / 100;
+          ctx.globalCompositeOperation = baseLayer.blendMode ?? "source-over";
+          ctx.drawImage(groupCanvas, 0, 0, store.width, store.height);
         }
       }
+
+      i = j;
     }
 
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
   }
 
-  // ── Compositing Cepat (Dirty Rect): hanya rekomposisi sub-area kecil yang disentuh kuas ──
-  // Mengurangi beban rendering dari 8.700.000 piksel (pada A4) menjadi ~1.500 piksel per goresan
+  // ── Compositing Cepat (Dirty Rect) ──
   function recompositeRect(x: number, y: number, w: number, h: number) {
     const store = getActiveStore();
     if (!store || !ctxRef.current || w <= 0 || h <= 0) return;
-    const ctx = ctxRef.current;
 
+    // Jika ada layer kliping, jalankan recomposite penuh agar masking akurat
+    const hasAnyClipping = (store.layers || layers).some((l) => l.clipped);
+    if (hasAnyClipping) {
+      recomposite();
+      return;
+    }
+
+    const ctx = ctxRef.current;
     const x0 = Math.max(0, Math.floor(x));
     const y0 = Math.max(0, Math.floor(y));
     const x1 = Math.min(store.width, Math.ceil(x + w));
@@ -393,7 +517,7 @@ export function useDrawingCanvas({
     const rh = y1 - y0;
     if (rw <= 0 || rh <= 0) return;
 
-    const currentLayers = (store.layers && store.layers.length > 0) ? store.layers : layers;
+    const currentLayers = store.layers && store.layers.length > 0 ? store.layers : layers;
     if (!currentLayers || currentLayers.length === 0) return;
 
     ctx.save();
@@ -413,7 +537,6 @@ export function useDrawingCanvas({
         ctx.globalAlpha = (layer.opacity ?? 100) / 100;
         ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
         ctx.drawImage(layerCanvas, x0, y0, rw, rh, x0, y0, rw, rh);
-        // Overlay scratch canvas (goresan sedang berjalan) di atas layer aktif
         if (scratchCanvasRef.current && layer.id === activeLayerId) {
           ctx.globalAlpha = ((layer.opacity ?? 100) / 100) * scratchOpacityRef.current;
           ctx.drawImage(scratchCanvasRef.current, x0, y0, rw, rh, x0, y0, rw, rh);
@@ -523,12 +646,13 @@ export function useDrawingCanvas({
       return;
     }
 
+    const activeMeta = layers.find((l) => l.id === activeLayerId);
     const layerCanvas = store.layerCanvases.get(activeLayerId);
     const ctx = layerCanvas?.getContext("2d");
     if (ctx && layerCanvas) {
       ctx.save();
       ctx.globalAlpha = scratchOpacityRef.current;
-      ctx.globalCompositeOperation = "source-over";
+      ctx.globalCompositeOperation = activeMeta?.alphaLocked ? "source-atop" : "source-over";
       ctx.drawImage(scratch, 0, 0);
       ctx.restore();
     }
@@ -591,7 +715,24 @@ export function useDrawingCanvas({
     };
   }
 
-  // ── History (GPU Canvas Clones, tanpa CPU readback getImageData) ────────────
+  // ── History & Undo/Redo ───────────────────────────────────────────────────
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  // Perbarui status canUndo / canRedo saat layer atau tab berganti
+  useEffect(() => {
+    const store = getActiveStore();
+    if (!store || !activeLayerId) {
+      setCanUndo(false);
+      setCanRedo(false);
+      return;
+    }
+    const undoStack = store.history.get(activeLayerId);
+    const redoStack = store.redoHistory?.get(activeLayerId);
+    setCanUndo((undoStack?.length ?? 0) > 0);
+    setCanRedo((redoStack?.length ?? 0) > 0);
+  }, [activeLayerId, activeTabId]);
+
   function pushHistory() {
     const store = getActiveStore();
     if (!store || !activeLayerId) return;
@@ -599,8 +740,7 @@ export function useDrawingCanvas({
     const layerCanvas = store.layerCanvases.get(activeLayerId);
     if (!layerCanvas) return;
 
-    // Kloning kanvas via drawImage murni di GPU (Texture blit ~0.3ms),
-    // menghilangkan alokasi 35MB CPU RAM dan GPU stall di A4
+    // Kloning kanvas via drawImage murni di GPU (Texture blit ~0.3ms)
     const copy = createLayerCanvas(layerCanvas.width, layerCanvas.height);
     const copyCtx = copy.getContext("2d");
     copyCtx?.drawImage(layerCanvas, 0, 0);
@@ -609,6 +749,15 @@ export function useDrawingCanvas({
     stack.push(copy);
     if (stack.length > MAX_HISTORY) stack.shift();
     store.history.set(activeLayerId, stack);
+
+    // Saat aksi baru dilakukan, bersihkan stack Redo
+    if (!store.redoHistory) {
+      store.redoHistory = new Map();
+    }
+    store.redoHistory.set(activeLayerId, []);
+
+    setCanUndo(true);
+    setCanRedo(false);
   }
 
   const handleUndo = useCallback(() => {
@@ -622,13 +771,62 @@ export function useDrawingCanvas({
     const stack = store.history.get(activeLayerId);
     const snapshot = stack?.pop();
     if (snapshot) {
+      // Simpan kondisi saat ini ke stack Redo sebelum ditimpa
+      const redoCopy = createLayerCanvas(layerCanvas.width, layerCanvas.height);
+      const redoCtx = redoCopy.getContext("2d");
+      redoCtx?.drawImage(layerCanvas, 0, 0);
+
+      if (!store.redoHistory) {
+        store.redoHistory = new Map();
+      }
+      const redoStack = store.redoHistory.get(activeLayerId) ?? [];
+      redoStack.push(redoCopy);
+      if (redoStack.length > MAX_HISTORY) redoStack.shift();
+      store.redoHistory.set(activeLayerId, redoStack);
+
       scratchCanvasRef.current = null;
       ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
       ctx.drawImage(snapshot, 0, 0);
       recomposite();
       persistActiveLayerContent();
+
+      setCanUndo((stack?.length ?? 0) > 0);
+      setCanRedo(true);
     }
   }, [activeLayerId]);
+
+  const handleRedo = useCallback(() => {
+    const store = getActiveStore();
+    if (!store || !activeLayerId) return;
+
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!ctx || !layerCanvas) return;
+
+    const redoStack = store.redoHistory?.get(activeLayerId);
+    const snapshot = redoStack?.pop();
+    if (snapshot) {
+      // Simpan kondisi saat ini ke stack Undo sebelum ditimpa
+      const undoCopy = createLayerCanvas(layerCanvas.width, layerCanvas.height);
+      const undoCtx = undoCopy.getContext("2d");
+      undoCtx?.drawImage(layerCanvas, 0, 0);
+
+      const undoStack = store.history.get(activeLayerId) ?? [];
+      undoStack.push(undoCopy);
+      if (undoStack.length > MAX_HISTORY) undoStack.shift();
+      store.history.set(activeLayerId, undoStack);
+
+      scratchCanvasRef.current = null;
+      ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+      ctx.drawImage(snapshot, 0, 0);
+      recomposite();
+      persistActiveLayerContent();
+
+      setCanUndo(true);
+      setCanRedo((redoStack?.length ?? 0) > 0);
+    }
+  }, [activeLayerId]);
+
 
   // ── Tool actions ──────────────────────────────────────────────────────────
   function handleBucketFill(clientX: number, clientY: number) {
@@ -798,7 +996,32 @@ export function useDrawingCanvas({
     },
   });
 
-  // ── Gesture & pointer handler ─────────────────────────────────────────────
+  // ── Text Tool ─────────────────────────────────────────────────────────────
+  const textTool = useTextTool({
+    tool,
+    color,
+    brushSize: brushSize ?? 8,
+    getActiveStore,
+    activeLayerId,
+    layers,
+    pushHistory,
+    recomposite,
+    persistActiveLayerContent,
+  });
+
+  // ── Selection Tools (Rect & Lasso) ────────────────────────────────────────
+  const selectionTool = useSelectionTool({
+    tool,
+    color,
+    getActiveStore,
+    activeLayerId,
+    layers,
+    pushHistory,
+    recomposite,
+    persistActiveLayerContent,
+  });
+
+
   const { handlePointerDown, handlePointerMove, handlePointerUp } = useCanvasGestures({
     viewportRef,
     tool,
@@ -831,7 +1054,12 @@ export function useDrawingCanvas({
     clearScratch: () => {
       scratchCanvasRef.current = null;
     },
+    onTextClick: textTool.startTextEdit,
+    onSelectionPointerDown: selectionTool.handleSelectionPointerDown,
+    onSelectionPointerMove: selectionTool.handleSelectionPointerMove,
+    onSelectionPointerUp: selectionTool.handleSelectionPointerUp,
   });
+
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
@@ -843,6 +1071,11 @@ export function useDrawingCanvas({
         handleUndo();
         return;
       }
+      if ((isMod && e.shiftKey && e.key.toLowerCase() === "z") || (isMod && e.key.toLowerCase() === "y")) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
       if (isMod && e.key.toLowerCase() === "s") {
         e.preventDefault();
         exportImage();
@@ -852,7 +1085,8 @@ export function useDrawingCanvas({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLayerId, activeTabId]);
+  }, [activeLayerId, activeTabId, handleUndo, handleRedo]);
+
 
   // ── Drag & drop gambar ke kanvas ──────────────────────────────────────────
   function handleDrop(e: ReactDragEvent<HTMLDivElement>) {
@@ -951,6 +1185,8 @@ export function useDrawingCanvas({
     deleteLayer: layerManager.deleteLayer,
     toggleLayerVisibility: layerManager.toggleLayerVisibility,
     toggleLayerLock: layerManager.toggleLayerLock,
+    toggleLayerClipped: layerManager.toggleLayerClipped,
+    toggleLayerAlphaLock: layerManager.toggleLayerAlphaLock,
     setLayerOpacity: layerManager.setLayerOpacity,
     setLayerBlendMode: layerManager.setLayerBlendMode,
     selectLayer: layerManager.selectLayer,
@@ -964,12 +1200,21 @@ export function useDrawingCanvas({
     resetView,
     resetRotation,
 
-    // File actions
+    // File actions & History
     exportImage,
     undo: handleUndo,
+    redo: handleRedo,
+    canUndo,
+    canRedo,
 
     // Info dimensi kanvas aktif
     canvasWidth: getActiveStore()?.width ?? tabs.find((t) => t.id === activeTabId)?.width ?? 1080,
     canvasHeight: getActiveStore()?.height ?? tabs.find((t) => t.id === activeTabId)?.height ?? 1080,
+
+    // Text tool
+    textTool,
+
+    // Selection tools (rect & lasso)
+    selectionTool,
   };
 }

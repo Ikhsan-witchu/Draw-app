@@ -39,7 +39,14 @@ interface UseCanvasGesturesParams {
   recomposite: () => void;
   onStrokeComplete?: () => void;
   clearScratch?: () => void;
+  // Text tool
+  onTextClick?: (docX: number, docY: number) => void;
+  // Selection tools
+  onSelectionPointerDown?: (docX: number, docY: number) => void;
+  onSelectionPointerMove?: (docX: number, docY: number) => void;
+  onSelectionPointerUp?: (docX: number, docY: number) => void;
 }
+
 
 export function useCanvasGestures({
   viewportRef,
@@ -68,7 +75,12 @@ export function useCanvasGestures({
   recomposite,
   onStrokeComplete,
   clearScratch,
+  onTextClick,
+  onSelectionPointerDown,
+  onSelectionPointerMove,
+  onSelectionPointerUp,
 }: UseCanvasGesturesParams) {
+
   const activePointers = useRef<Map<number, PointerInfo>>(new Map());
   const isGestureActive = useRef(false);
   const ignoreUntilAllUp = useRef(false);
@@ -222,7 +234,20 @@ export function useCanvasGestures({
         return;
       }
 
+      // Text tool: klik → buka text editor di posisi tersebut
+      if (tool === "text") {
+        onTextClick?.(docPt.x, docPt.y);
+        return;
+      }
+
+      // Selection tools (rect & lasso)
+      if (tool === "rect" || tool === "lasso") {
+        onSelectionPointerDown?.(docPt.x, docPt.y);
+        return;
+      }
+
       if (!isDrawable || !activeLayerId) return;
+
 
       const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
       if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
@@ -326,6 +351,14 @@ export function useCanvasGestures({
       return;
     }
 
+    // Selection tool drag (rect & lasso)
+    if (!ignoreUntilAllUp.current && (tool === "rect" || tool === "lasso") && activePointers.current.size === 1) {
+      const pt = docPointFromClient(e.clientX, e.clientY);
+      onSelectionPointerMove?.(pt.x, pt.y);
+      return;
+    }
+
+
     // Drawing stroke satu jari
     if (!ignoreUntilAllUp.current && isDrawing.current && activePointers.current.size === 1 && activeLayerId) {
       const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
@@ -361,6 +394,14 @@ export function useCanvasGestures({
     }
 
     if (activePointers.current.size === 0) {
+      // Selection tool pointer up → commit selection
+      if (tool === "rect" || tool === "lasso") {
+        const pt = docPointFromClient(e.clientX, e.clientY);
+        onSelectionPointerUp?.(pt.x, pt.y);
+        ignoreUntilAllUp.current = false;
+        return;
+      }
+
       if (isDrawingShape.current && shapeStartPoint.current) {
         const finalPt = lastPoint.current ? { x: lastPoint.current.x, y: lastPoint.current.y } : shapeStartPoint.current;
         pushHistory();
@@ -380,6 +421,7 @@ export function useCanvasGestures({
         onStrokeComplete?.();
       }
     }
+
   };
 
   return { handlePointerDown, handlePointerMove, handlePointerUp };

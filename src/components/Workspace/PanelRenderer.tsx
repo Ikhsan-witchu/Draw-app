@@ -39,6 +39,8 @@ interface PanelRendererProps {
   onDeleteLayer: (id: string) => void;
   onToggleLayerVisible: (id: string) => void;
   onToggleLayerLock: (id: string) => void;
+  onToggleLayerClipped?: (id: string) => void;
+  onToggleLayerAlphaLock?: (id: string) => void;
   onSelectLayer: (id: string) => void;
   onReorderLayer: (draggedId: string, targetId: string, position: "before" | "after") => void;
   onLayerOpacityChange?: (id: string, opacity: number) => void;
@@ -70,6 +72,8 @@ export function PanelRenderer({
   onDeleteLayer,
   onToggleLayerVisible,
   onToggleLayerLock,
+  onToggleLayerClipped,
+  onToggleLayerAlphaLock,
   onSelectLayer,
   onReorderLayer,
   onLayerOpacityChange,
@@ -135,6 +139,8 @@ export function PanelRenderer({
             onDelete={onDeleteLayer}
             onToggleVisible={onToggleLayerVisible}
             onToggleLock={onToggleLayerLock}
+            onToggleClipped={onToggleLayerClipped}
+            onToggleAlphaLock={onToggleLayerAlphaLock}
             onSelect={onSelectLayer}
             onReorder={onReorderLayer}
             onOpacityChange={onLayerOpacityChange}
