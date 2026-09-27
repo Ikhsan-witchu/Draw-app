@@ -384,6 +384,126 @@ export function drawAirbrush(
   ctx.globalAlpha = 1;
 }
 
+// ── Crayon ────────────────────────────────────────────────────────────────────
+// Tekstur kasar, banyak dot acak dengan ukuran bervariasi.
+
+export function drawCrayon(
+  ctx: CanvasRenderingContext2D,
+  from: BrushPoint,
+  to: BrushPoint,
+  size: number,
+  color: string,
+  isEraser: boolean,
+  opacity: number = 1,
+): void {
+  const d = dist(from, to);
+  const r = Math.max(1, size * 0.5);
+  const steps = Math.max(1, Math.ceil(d / (r * 0.2)));
+  const opFactor = Math.max(0, Math.min(1, opacity));
+  
+  ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+  
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const cx = lerp(from.x, to.x, t);
+    const cy = lerp(from.y, to.y, t);
+
+    // Scatter small dots within the radius
+    const dotCount = Math.ceil(r * r * 0.6);
+    for (let j = 0; j < dotCount; j++) {
+      const angle = Math.random() * Math.PI * 2;
+      // lebih padat di tengah
+      const rad = Math.random() * Math.random() * r;
+      const dx = cx + Math.cos(angle) * rad;
+      const dy = cy + Math.sin(angle) * rad;
+      
+      ctx.globalAlpha = (0.2 + Math.random() * 0.8) * opFactor;
+      ctx.fillStyle = isEraser ? "rgba(0,0,0,1)" : color;
+      
+      const dotSize = 1 + Math.random() * 1.5;
+      ctx.fillRect(dx, dy, dotSize, dotSize);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Charcoal (Arang) ──────────────────────────────────────────────────────────
+// Lembut tapi bertekstur kasar/berbintik.
+
+export function drawCharcoal(
+  ctx: CanvasRenderingContext2D,
+  from: BrushPoint,
+  to: BrushPoint,
+  size: number,
+  color: string,
+  isEraser: boolean,
+  opacity: number = 1,
+): void {
+  const d = dist(from, to);
+  const r = Math.max(1, size * 0.5);
+  const steps = Math.max(1, Math.ceil(d / (r * 0.25)));
+  const opFactor = Math.max(0, Math.min(1, opacity));
+  
+  ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+  
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const cx = lerp(from.x, to.x, t);
+    const cy = lerp(from.y, to.y, t);
+
+    const dotCount = Math.ceil(r * 2.5);
+    for (let j = 0; j < dotCount; j++) {
+      const angle = Math.random() * Math.PI * 2;
+      const rad = Math.random() * r;
+      const dx = cx + Math.cos(angle) * rad;
+      const dy = cy + Math.sin(angle) * rad;
+      
+      ctx.globalAlpha = (0.05 + Math.random() * 0.15) * opFactor;
+      ctx.fillStyle = isEraser ? "rgba(0,0,0,1)" : color;
+      
+      const dotSize = 1 + Math.random() * (size * 0.15);
+      ctx.beginPath();
+      ctx.arc(dx, dy, dotSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Pixel Art ─────────────────────────────────────────────────────────────────
+// Kuas tajam bergerigi (aliased), berbentuk kotak.
+
+export function drawPixel(
+  ctx: CanvasRenderingContext2D,
+  from: BrushPoint,
+  to: BrushPoint,
+  size: number,
+  color: string,
+  isEraser: boolean,
+  opacity: number = 1,
+): void {
+  const d = dist(from, to);
+  const pixelSize = Math.max(1, Math.round(size));
+  const steps = Math.max(1, Math.ceil(d / (pixelSize * 0.3)));
+  const opFactor = Math.max(0, Math.min(1, opacity));
+  
+  ctx.globalCompositeOperation = isEraser ? "destination-out" : "source-over";
+  ctx.globalAlpha = opFactor;
+  ctx.fillStyle = isEraser ? "rgba(0,0,0,1)" : color;
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const cx = Math.floor(lerp(from.x, to.x, t));
+    const cy = Math.floor(lerp(from.y, to.y, t));
+    
+    const sx = cx - Math.floor(pixelSize / 2);
+    const sy = cy - Math.floor(pixelSize / 2);
+    ctx.fillRect(sx, sy, pixelSize, pixelSize);
+  }
+  
+  ctx.globalAlpha = 1;
+}
+
 // ── Dispatcher utama ───────────────────────────────────────────────────────────
 // Dipanggil oleh drawStrokeSegment di useDrawingCanvas.ts
 
@@ -405,6 +525,9 @@ export function dispatchBrush(
     case "marker":   return drawMarker(ctx, from, to, size, color, isEraser, opacity);
     case "pencil2":  return drawPencil(ctx, from, to, size, color, isEraser, opacity);
     case "airbrush": return drawAirbrush(ctx, from, to, size, color, isEraser, opacity);
+    case "crayon":   return drawCrayon(ctx, from, to, size, color, isEraser, opacity);
+    case "charcoal": return drawCharcoal(ctx, from, to, size, color, isEraser, opacity);
+    case "pixel":    return drawPixel(ctx, from, to, size, color, isEraser, opacity);
     // Fallback ke pen untuk tipe tak dikenal
     default:         return drawPen(ctx, from, to, size, color, isEraser, opacity);
   }

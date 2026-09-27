@@ -1,10 +1,12 @@
 // ─── Hook: Text Tool ────────────────────────────────────────────────────────
 // Mengelola state dan logika untuk text tool:
-// - Simpan posisi klik (document coords) dan teks yang sedang diketik
-// - Commit teks ke layer canvas saat user selesai (tekan Enter atau klik luar)
+// - Pengaturan font: ukuran, jenis font, bold, italic, text alignment
+// - Render teks presisi ke layer canvas
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TabStore, LayerMeta } from "../types/drawing";
+
+export type TextAlign = "left" | "center" | "right";
 
 export interface TextToolState {
   active: boolean;          // sedang menampilkan text input
@@ -13,10 +15,18 @@ export interface TextToolState {
   text: string;             // isi teks sementara
 }
 
+export interface TextFormatOptions {
+  fontSize?: number;
+  fontFamily?: string;
+  isBold?: boolean;
+  isItalic?: boolean;
+  align?: TextAlign;
+}
+
 interface UseTextToolParams {
   tool: string;
   color: string;
-  brushSize: number;        // font size = brushSize * 2 px (min 12, max 256)
+  brushSize: number;
   getActiveStore: () => TabStore | undefined;
   activeLayerId: string | null;
   layers: LayerMeta[];
@@ -43,13 +53,30 @@ export function useTextTool({
     text: "",
   });
 
-  const fontSize = Math.max(12, Math.min(256, brushSize * 2));
+  // Pengaturan format teks
+  const [fontSize, setFontSize] = useState<number>(() => Math.max(12, Math.min(300, (brushSize ?? 16) * 2)));
+  const [fontFamily, setFontFamily] = useState<string>("sans-serif");
+  const [isBold, setIsBold] = useState<boolean>(false);
+  const [isItalic, setIsItalic] = useState<boolean>(false);
+  const [align, setAlign] = useState<TextAlign>("left");
+
+  // Sinkronkan font size awal dengan brush size jika ukuran teks belum pernah diubah manual
+  const hasCustomFontSize = useRef(false);
+  useEffect(() => {
+    if (!hasCustomFontSize.current && brushSize > 0) {
+      setFontSize(Math.max(12, Math.min(300, brushSize * 2)));
+    }
+  }, [brushSize]);
+
+  const handleSetFontSize = useCallback((size: number) => {
+    hasCustomFontSize.current = true;
+    setFontSize(Math.max(8, Math.min(300, size)));
+  }, []);
 
   /** Mulai mengedit teks di posisi dokumen tertentu */
   const startTextEdit = useCallback(
     (docX: number, docY: number) => {
       if (tool !== "text") return;
-      // Jika sudah ada input aktif, commit dulu
       setTextState({ active: true, docX, docY, text: "" });
     },
     [tool],
@@ -57,7 +84,7 @@ export function useTextTool({
 
   /** Commit teks ke layer canvas lalu tutup input */
   const commitText = useCallback(
-    (text: string, docX: number, docY: number) => {
+    (text: string, docX: number, docY: number, customOptions?: TextFormatOptions) => {
       if (!text.trim()) {
         setTextState((s) => ({ ...s, active: false, text: "" }));
         return;
@@ -84,15 +111,24 @@ export function useTextTool({
 
       pushHistory();
 
+      const fSize = customOptions?.fontSize ?? fontSize;
+      const fFam = customOptions?.fontFamily ?? fontFamily;
+      const fBold = customOptions?.isBold ?? isBold;
+      const fItalic = customOptions?.isItalic ?? isItalic;
+      const fAlign = customOptions?.align ?? align;
+
       ctx.save();
-      ctx.font = `${fontSize}px sans-serif`;
+      const fontStyle = fItalic ? "italic" : "normal";
+      const fontWeight = fBold ? "bold" : "normal";
+      ctx.font = `${fontStyle} ${fontWeight} ${fSize}px ${fFam}`;
       ctx.fillStyle = color;
       ctx.textBaseline = "top";
+      ctx.textAlign = fAlign;
 
       // Render setiap baris (user bisa tekan Shift+Enter untuk multi-line)
       const lines = text.split("\n");
       lines.forEach((line, i) => {
-        ctx.fillText(line, docX, docY + i * (fontSize * 1.2));
+        ctx.fillText(line, docX, docY + i * (fSize * 1.25));
       });
       ctx.restore();
 
@@ -110,6 +146,10 @@ export function useTextTool({
       persistActiveLayerContent,
       color,
       fontSize,
+      fontFamily,
+      isBold,
+      isItalic,
+      align,
     ],
   );
 
@@ -123,7 +163,7 @@ export function useTextTool({
     setTextState((s) => ({ ...s, text }));
   }, []);
 
-  // Jika tool berganti keluar dari "text", batalkan/commit input yang sedang aktif
+  // Jika tool berganti keluar dari "text", commit input yang sedang aktif
   const textStateRef = useRef(textState);
   useEffect(() => {
     textStateRef.current = textState;
@@ -135,10 +175,18 @@ export function useTextTool({
     }
   }, [tool, commitText]);
 
-
   return {
     textState,
     fontSize,
+    fontFamily,
+    isBold,
+    isItalic,
+    align,
+    setFontSize: handleSetFontSize,
+    setFontFamily,
+    setIsBold,
+    setIsItalic,
+    setAlign,
     startTextEdit,
     commitText,
     cancelText,

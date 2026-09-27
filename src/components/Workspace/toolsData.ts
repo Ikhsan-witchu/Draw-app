@@ -20,18 +20,18 @@ import {
 import type { ToolItem } from "./types";
 
 export const TOOLS: ToolItem[] = [
-  { id: "brush",       icon: Pencil,      label: "Brush" },
-  { id: "eraser",      icon: Eraser,      label: "Eraser" },
-  { id: "line",        icon: Slash,       label: "Line" },
-  { id: "rectShape",   icon: Square,      label: "Rectangle" },
+  { id: "brush",       icon: Pencil,      label: "Brush",            shortcut: "B" },
+  { id: "eraser",      icon: Eraser,      label: "Eraser",           shortcut: "E" },
+  { id: "line",        icon: Slash,       label: "Line",             shortcut: "L" },
+  { id: "rectShape",   icon: Square,      label: "Rectangle",        shortcut: "U" },
   { id: "ellipseShape",icon: Circle,      label: "Ellipse" },
-  { id: "gradient",    icon: Blend,       label: "Gradient" },
-  { id: "bucket",      icon: PaintBucket, label: "Fill" },
-  { id: "eyedropper",  icon: Pipette,     label: "Eyedropper" },
-  { id: "move",        icon: Move,        label: "Move / Pan" },
-  { id: "lasso",       icon: Lasso,       label: "Lasso select" },
-  { id: "rect",        icon: Square,      label: "Rectangle select" },
-  { id: "text",        icon: Type,        label: "Text" },
+  { id: "gradient",    icon: Blend,       label: "Gradient",         shortcut: "G" },
+  { id: "bucket",      icon: PaintBucket, label: "Fill",             shortcut: "G" },
+  { id: "eyedropper",  icon: Pipette,     label: "Eyedropper",       shortcut: "I" },
+  { id: "move",        icon: Move,        label: "Move / Pan",       shortcut: "V" },
+  { id: "lasso",       icon: Lasso,       label: "Lasso select",     shortcut: "W" },
+  { id: "rect",        icon: Square,      label: "Rectangle select", shortcut: "M" },
+  { id: "text",        icon: Type,        label: "Text",             shortcut: "T" },
 ];
 
 export const BRUSHES: ToolItem[] = [
@@ -42,4 +42,7 @@ export const BRUSHES: ToolItem[] = [
   { id: "marker",   icon: Highlighter, label: "Marker" },
   { id: "pencil2",  icon: Pencil,     label: "Pencil" },
   { id: "airbrush", icon: Wind,       label: "Airbrush soft" },
+  { id: "crayon",   icon: Pencil,     label: "Crayon" },
+  { id: "charcoal", icon: Paintbrush, label: "Charcoal" },
+  { id: "pixel",    icon: Square,     label: "Pixel" },
 ];

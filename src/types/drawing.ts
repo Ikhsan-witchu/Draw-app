@@ -25,6 +25,14 @@ export interface DocumentTab {
   initialImage?: HTMLImageElement;
 }
 
+export interface AnimationFrame {
+  id: string;
+  name: string;
+  duration?: number; // multiplier / ms
+  layerCanvases: Map<string, HTMLCanvasElement>;
+  thumbnailUrl?: string;
+}
+
 export interface TabStore {
   width: number;
   height: number;
@@ -37,6 +45,11 @@ export interface TabStore {
   panX: number;
   panY: number;
   rotation: number;
+  // Animation frames
+  frames?: AnimationFrame[];
+  currentFrameIndex?: number;
+  fps?: number;
+  onionSkinEnabled?: boolean;
 }
 
 export interface UseDrawingCanvasOptions {

@@ -54,7 +54,7 @@ export function BrushOpacityControl({
           background: `linear-gradient(to right, ${isEraser ? "#e5e5e5" : color} ${opacity}%, #404040 ${opacity}%)`,
           accentColor: isEraser ? "#e5e5e5" : color,
         }}
-        title={`Opacity: ${opacity}%`}
+        title={`Opacity: ${opacity}% (Shift+[ atau Shift+])`}
       />
 
       {/* Number input / Badge */}

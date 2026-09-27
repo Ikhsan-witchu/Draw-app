@@ -35,6 +35,7 @@ import { Sparkles, Undo2, Redo2 } from "lucide-react";
 import { AIAssistantPanel } from "../AI/AIAssistantPanel";
 import type { WorkspaceToolSetters } from "../../utils/aiToolBridge";
 import { hsvToRgbString } from "../../utils/canvasUtils";
+import { SaveDialog } from "./SaveDialog";
 
 
 
@@ -45,6 +46,7 @@ const PANEL_PREFERRED_WIDTH: Partial<Record<PanelId, number>> = {
   brushSettings: 200,
   hue: 240,
   layers: 220,
+  timeline: 220,
 };
 
 function computeSidebarWidth(panelIds: PanelId[]): number {
@@ -144,7 +146,7 @@ export default function DrawingWorkspace({
     if (saved?.bottomPanels && Array.isArray(saved.bottomPanels) && saved.bottomPanels.length > 0) {
       return saved.bottomPanels as PanelId[];
     }
-    return ["layers"];
+    return ["layers", "timeline"];
   });
 
   const [dragPanel, setDragPanel] = useState<PanelId | null>(null);
@@ -156,6 +158,7 @@ export default function DrawingWorkspace({
     brushes: "right",
     hue: "right",
     layers: "bottom",
+    timeline: "bottom",
   });
 
   // State fungsional: tool aktif, warna (hue/sat/val), brush size
@@ -260,8 +263,64 @@ export default function DrawingWorkspace({
   });
 
   const [showNewDialog, setShowNewDialog] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const openFileInputRef = useRef<HTMLInputElement | null>(null);
+  const dwpFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Keyboard shortcuts (Save & Tools)
+  useEffect(() => {
+    function handleWorkspaceShortcuts(e: KeyboardEvent) {
+      const isMod = e.ctrlKey || e.metaKey;
+      const isInputField =
+        (e.target as HTMLElement)?.tagName === "INPUT" ||
+        (e.target as HTMLElement)?.tagName === "TEXTAREA" ||
+        (e.target as HTMLElement)?.tagName === "SELECT";
+
+      if (isMod && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        setShowSaveDialog(true);
+        return;
+      }
+
+      // Jangan trigger shortcut tool jika user sedang mengetik di input text
+      if (isInputField || isMod) return;
+
+      const key = e.key.toLowerCase();
+
+      // Tool selection shortcuts
+      switch (key) {
+        case "b": setActiveTool("brush"); break;
+        case "e": setActiveTool("eraser"); break;
+        case "l": setActiveTool("line"); break;
+        case "u": setActiveTool("rectShape"); break;
+        case "g": setActiveTool("bucket"); break;
+        case "i": setActiveTool("eyedropper"); break;
+        case "v": setActiveTool("move"); break;
+        case "m": setActiveTool("rect"); break;
+        case "w": setActiveTool("lasso"); break;
+        case "t": setActiveTool("text"); break;
+      }
+
+      // Brush size & opacity shortcuts
+      // Perhatikan bahwa Shift + [ menghasilkan '{' pada beberapa keyboard, dan Shift + ] menghasilkan '}'
+      if (key === "[" || key === "{") {
+        if (e.shiftKey) {
+          setBrushOpacity((p) => Math.max(1, p - 10));
+        } else {
+          setBrushSize((p) => Math.max(1, p - (p > 10 ? 5 : 1)));
+        }
+      } else if (key === "]" || key === "}") {
+        if (e.shiftKey) {
+          setBrushOpacity((p) => Math.min(100, p + 10));
+        } else {
+          setBrushSize((p) => Math.min(500, p + (p >= 10 ? 5 : 1))); // Max 500px
+        }
+      }
+    }
+    window.addEventListener("keydown", handleWorkspaceShortcuts);
+    return () => window.removeEventListener("keydown", handleWorkspaceShortcuts);
+  }, []);
 
   const toolSetters = useMemo<WorkspaceToolSetters>(
     () => ({
@@ -422,6 +481,36 @@ export default function DrawingWorkspace({
         sat={sat}
         val={val}
         onColorChange={handleColorPick}
+        textFontSize={drawing.textTool.fontSize}
+        onTextFontSizeChange={drawing.textTool.setFontSize}
+        textFontFamily={drawing.textTool.fontFamily}
+        onTextFontFamilyChange={drawing.textTool.setFontFamily}
+        textIsBold={drawing.textTool.isBold}
+        onTextToggleBold={() => drawing.textTool.setIsBold((b) => !b)}
+        textIsItalic={drawing.textTool.isItalic}
+        onTextToggleItalic={() => drawing.textTool.setIsItalic((i) => !i)}
+        textAlign={drawing.textTool.align}
+        onTextAlignChange={drawing.textTool.setAlign}
+        frames={drawing.timeline.frames}
+        currentFrameIndex={drawing.timeline.currentFrameIndex}
+        fps={drawing.timeline.fps}
+        isPlaying={drawing.timeline.isPlaying}
+        isLooping={drawing.timeline.isLooping}
+        onionSkinEnabled={drawing.timeline.onionSkinEnabled}
+        canvasWidth={drawing.canvasWidth}
+        canvasHeight={drawing.canvasHeight}
+        onSelectFrame={drawing.timeline.selectFrame}
+        onAddFrame={drawing.timeline.addFrame}
+        onDuplicateFrame={drawing.timeline.duplicateFrame}
+        onDeleteFrame={drawing.timeline.deleteFrame}
+        onNextFrame={drawing.timeline.nextFrame}
+        onPrevFrame={drawing.timeline.prevFrame}
+        onFirstFrame={drawing.timeline.firstFrame}
+        onLastFrame={drawing.timeline.lastFrame}
+        onTogglePlay={drawing.timeline.togglePlay}
+        onToggleLoop={() => drawing.timeline.setIsLooping((l) => !l)}
+        onToggleOnionSkin={drawing.timeline.toggleOnionSkin}
+        onFpsChange={drawing.timeline.setFps}
         layers={drawing.layers}
         activeLayerId={drawing.activeLayerId}
         onAddLayer={drawing.addLayer}
@@ -449,6 +538,36 @@ export default function DrawingWorkspace({
     sat,
     val,
     handleColorPick,
+    drawing.textTool.fontSize,
+    drawing.textTool.fontFamily,
+    drawing.textTool.isBold,
+    drawing.textTool.isItalic,
+    drawing.textTool.align,
+    drawing.textTool.setFontSize,
+    drawing.textTool.setFontFamily,
+    drawing.textTool.setIsBold,
+    drawing.textTool.setIsItalic,
+    drawing.textTool.setAlign,
+    drawing.timeline.frames,
+    drawing.timeline.currentFrameIndex,
+    drawing.timeline.fps,
+    drawing.timeline.isPlaying,
+    drawing.timeline.isLooping,
+    drawing.timeline.onionSkinEnabled,
+    drawing.timeline.selectFrame,
+    drawing.timeline.addFrame,
+    drawing.timeline.duplicateFrame,
+    drawing.timeline.deleteFrame,
+    drawing.timeline.nextFrame,
+    drawing.timeline.prevFrame,
+    drawing.timeline.firstFrame,
+    drawing.timeline.lastFrame,
+    drawing.timeline.togglePlay,
+    drawing.timeline.setIsLooping,
+    drawing.timeline.toggleOnionSkin,
+    drawing.timeline.setFps,
+    drawing.canvasWidth,
+    drawing.canvasHeight,
     drawing.layers,
     drawing.activeLayerId,
     drawing.addLayer,
@@ -468,8 +587,9 @@ export default function DrawingWorkspace({
     label: "File",
     items: [
       { type: "action", label: "New", onClick: () => setShowNewDialog(true) },
-      { type: "action", label: "Open", onClick: () => openFileInputRef.current?.click() },
-      { type: "action", label: "Save", shortcut: "Ctrl+S", onClick: () => drawing.exportImage() },
+      { type: "action", label: "Open Image", onClick: () => openFileInputRef.current?.click() },
+      { type: "action", label: "Open Project (.dwp)", onClick: () => dwpFileInputRef.current?.click() },
+      { type: "action", label: "Save", shortcut: "Ctrl+S", onClick: () => setShowSaveDialog(true) },
       { type: "action", label: "Close", onClick: () => activeTabId && onCloseTab(activeTabId) },
     ],
   };
@@ -505,10 +625,59 @@ export default function DrawingWorkspace({
         checked: isPanelVisible("layers"),
         onToggle: () => togglePanelVisibility("layers"),
       },
+      {
+        type: "checkbox",
+        label: "Timeline Animasi",
+        checked: isPanelVisible("timeline"),
+        onToggle: () => togglePanelVisibility("timeline"),
+      },
     ],
   };
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  // ── Shift+Drag to Resize Brush ─────────────────────────
+  const resizeDragStart = useRef<{ clientX: number; startSize: number } | null>(null);
+
+  const handlePointerDownCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Hanya aktif jika menekan Shift dan bukan klik kanan
+    if (e.shiftKey && e.button !== 2) {
+      e.preventDefault();
+      e.stopPropagation();
+      resizeDragStart.current = { clientX: e.clientX, startSize: brushSize };
+      try {
+        (e.target as Element).setPointerCapture(e.pointerId);
+      } catch (err) {
+        // Abaikan jika tidak didukung
+      }
+    }
+  };
+
+  const handlePointerMoveCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (resizeDragStart.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      const dx = e.clientX - resizeDragStart.current.clientX;
+      // 1px geser mouse = 0.5px ubah brush size
+      const newSize = Math.max(1, Math.min(500, Math.round(resizeDragStart.current.startSize + dx * 0.5)));
+      if (newSize !== brushSize) {
+        setBrushSize(newSize);
+      }
+    }
+  };
+
+  const handlePointerUpCapture = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (resizeDragStart.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      resizeDragStart.current = null;
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // Abaikan
+      }
+    }
+  };
 
   // ════════════════════════════════════════
   // ── MOBILE LAYOUT ──
@@ -525,7 +694,7 @@ export default function DrawingWorkspace({
           onRedo={drawing.redo}
           canUndo={drawing.canUndo}
           canRedo={drawing.canRedo}
-          onSave={() => drawing.exportImage()}
+          onSave={() => setShowSaveDialog(true)}
           onNewFile={() => setShowNewDialog(true)}
           onOpenFile={onOpenTabFile}
           onCloseTab={() => activeTabId && onCloseTab(activeTabId)}
@@ -537,7 +706,12 @@ export default function DrawingWorkspace({
 
 
         {/* Fullscreen canvas in the middle */}
-        <div className="flex-1 min-h-0 relative">
+        <div 
+          className="flex-1 min-h-0 relative"
+          onPointerDownCapture={handlePointerDownCapture}
+          onPointerMoveCapture={handlePointerMoveCapture}
+          onPointerUpCapture={handlePointerUpCapture}
+        >
           <DrawingCanvas
             viewportRef={drawing.viewportRef}
             canvasRef={drawing.canvasRef}
@@ -564,6 +738,10 @@ export default function DrawingWorkspace({
             brushSize={brushSize}
             textToolState={drawing.textTool.textState}
             textFontSize={drawing.textTool.fontSize}
+            textFontFamily={drawing.textTool.fontFamily}
+            textIsBold={drawing.textTool.isBold}
+            textIsItalic={drawing.textTool.isItalic}
+            textAlign={drawing.textTool.align}
             textColor={color}
             onTextChange={drawing.textTool.updateText}
             onTextCommit={(t) =>
@@ -574,6 +752,11 @@ export default function DrawingWorkspace({
               )
             }
             onTextCancel={drawing.textTool.cancelText}
+            onTextFontSizeChange={drawing.textTool.setFontSize}
+            onTextFontFamilyChange={drawing.textTool.setFontFamily}
+            onTextToggleBold={() => drawing.textTool.setIsBold((b) => !b)}
+            onTextToggleItalic={() => drawing.textTool.setIsItalic((i) => !i)}
+            onTextAlignChange={drawing.textTool.setAlign}
             selectionState={drawing.selectionTool.selState}
             selectionDashOffset={drawing.selectionTool.dashOffset}
             onSelectionCut={() => drawing.selectionTool.copySelection(true)}
@@ -734,6 +917,14 @@ export default function DrawingWorkspace({
             onCancel={() => setShowNewDialog(false)}
           />
         )}
+
+        <SaveDialog
+          isOpen={showSaveDialog}
+          onClose={() => setShowSaveDialog(false)}
+          onSavePng={() => drawing.exportImage()}
+          onSaveProject={() => drawing.saveProject()}
+          projectTitle={activeTab?.title ?? "project"}
+        />
       </div>
     );
   }
@@ -805,6 +996,24 @@ export default function DrawingWorkspace({
         className="hidden"
         onChange={handleOpenFileChange}
       />
+      <input
+        ref={dwpFileInputRef}
+        type="file"
+        accept=".dwp"
+        className="hidden"
+        onChange={async (e: ChangeEvent<HTMLInputElement>) => {
+          const file = e.target.files?.[0];
+          if (file && file.name.endsWith(".dwp")) {
+            try {
+              await drawing.loadProjectFromFile(file);
+            } catch (err) {
+              console.error("Gagal membuka proyek:", err);
+              alert("Gagal membuka file proyek. Pastikan file .dwp valid.");
+            }
+          }
+          e.target.value = "";
+        }}
+      />
 
       <div className="flex flex-1 min-h-0">
         <Sidebar
@@ -826,7 +1035,12 @@ export default function DrawingWorkspace({
 
         {/* Kolom tengah: kanvas di atas, bottom bar di bawah */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <div className="flex-1 min-h-0">
+          <div 
+            className="flex-1 min-h-0"
+            onPointerDownCapture={handlePointerDownCapture}
+            onPointerMoveCapture={handlePointerMoveCapture}
+            onPointerUpCapture={handlePointerUpCapture}
+          >
             <DrawingCanvas
               viewportRef={drawing.viewportRef}
               canvasRef={drawing.canvasRef}
@@ -852,6 +1066,10 @@ export default function DrawingWorkspace({
               brushSize={brushSize}
               textToolState={drawing.textTool.textState}
               textFontSize={drawing.textTool.fontSize}
+              textFontFamily={drawing.textTool.fontFamily}
+              textIsBold={drawing.textTool.isBold}
+              textIsItalic={drawing.textTool.isItalic}
+              textAlign={drawing.textTool.align}
               textColor={color}
               onTextChange={drawing.textTool.updateText}
               onTextCommit={(t) =>
@@ -862,6 +1080,11 @@ export default function DrawingWorkspace({
                 )
               }
               onTextCancel={drawing.textTool.cancelText}
+              onTextFontSizeChange={drawing.textTool.setFontSize}
+              onTextFontFamilyChange={drawing.textTool.setFontFamily}
+              onTextToggleBold={() => drawing.textTool.setIsBold((b) => !b)}
+              onTextToggleItalic={() => drawing.textTool.setIsItalic((i) => !i)}
+              onTextAlignChange={drawing.textTool.setAlign}
               selectionState={drawing.selectionTool.selState}
               selectionDashOffset={drawing.selectionTool.dashOffset}
               onSelectionCut={() => drawing.selectionTool.copySelection(true)}
@@ -924,6 +1147,14 @@ export default function DrawingWorkspace({
         activeTabId={activeTabId}
         canvasRef={drawing.canvasRef}
         setters={toolSetters}
+      />
+
+      <SaveDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        onSavePng={() => drawing.exportImage()}
+        onSaveProject={() => drawing.saveProject()}
+        projectTitle={activeTab?.title ?? "project"}
       />
     </div>
   );

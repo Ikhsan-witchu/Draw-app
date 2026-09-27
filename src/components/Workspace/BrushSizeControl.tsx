@@ -53,7 +53,7 @@ export function BrushSizeControl({
           value={size}
           onChange={(e) => onChange(Number(e.target.value))}
           className="w-24 sm:w-32 h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white"
-          title={`Brush Size: ${size}px`}
+          title={`Brush Size: ${size}px ([ atau ])`}
         />
 
         {/* Number input / Badge */}

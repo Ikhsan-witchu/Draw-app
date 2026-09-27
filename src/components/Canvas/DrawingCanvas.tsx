@@ -11,7 +11,7 @@ import type { DocumentTab } from "../../hooks/useDrawingCanvas";
 import { TextOverlay } from "./TextOverlay";
 import { SelectionOverlay } from "./SelectionOverlay";
 import { SelectionToolbar } from "./SelectionToolbar";
-import type { TextToolState } from "../../hooks/useTextTool";
+import type { TextAlign, TextToolState } from "../../hooks/useTextTool";
 import type { SelectionState } from "../../hooks/useSelectionTool";
 
 
@@ -42,10 +42,19 @@ interface DrawingCanvasProps {
   // Text tool
   textToolState?: TextToolState;
   textFontSize?: number;
+  textFontFamily?: string;
+  textIsBold?: boolean;
+  textIsItalic?: boolean;
+  textAlign?: TextAlign;
   textColor?: string;
   onTextChange?: (text: string) => void;
   onTextCommit?: (text: string) => void;
   onTextCancel?: () => void;
+  onTextFontSizeChange?: (size: number) => void;
+  onTextFontFamilyChange?: (family: string) => void;
+  onTextToggleBold?: () => void;
+  onTextToggleItalic?: () => void;
+  onTextAlignChange?: (align: TextAlign) => void;
   // Selection tool
   selectionState?: SelectionState;
   selectionDashOffset?: number;
@@ -81,10 +90,19 @@ export default function DrawingCanvas({
   brushSize = 8,
   textToolState,
   textFontSize = 24,
+  textFontFamily = "sans-serif",
+  textIsBold = false,
+  textIsItalic = false,
+  textAlign = "left",
   textColor = "#000000",
   onTextChange,
   onTextCommit,
   onTextCancel,
+  onTextFontSizeChange,
+  onTextFontFamilyChange,
+  onTextToggleBold,
+  onTextToggleItalic,
+  onTextAlignChange,
   selectionState,
   selectionDashOffset = 0,
   onSelectionCut,
@@ -310,6 +328,10 @@ export default function DrawingCanvas({
             docY={textToolState.docY}
             text={textToolState.text}
             fontSize={textFontSize}
+            fontFamily={textFontFamily}
+            isBold={textIsBold}
+            isItalic={textIsItalic}
+            align={textAlign}
             color={textColor}
             zoom={zoom}
             panX={panX}
@@ -320,6 +342,11 @@ export default function DrawingCanvas({
             onChange={onTextChange ?? (() => {})}
             onCommit={onTextCommit ?? (() => {})}
             onCancel={onTextCancel ?? (() => {})}
+            onFontSizeChange={onTextFontSizeChange}
+            onFontFamilyChange={onTextFontFamilyChange}
+            onToggleBold={onTextToggleBold}
+            onToggleItalic={onTextToggleItalic}
+            onAlignChange={onTextAlignChange}
           />
         )}
 

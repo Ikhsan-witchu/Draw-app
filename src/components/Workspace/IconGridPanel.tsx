@@ -34,10 +34,10 @@ export function IconGridPanel({
           gap: `${gap}px`,
         }}
       >
-        {items.map(({ id, icon: Icon, label }) => (
+        {items.map(({ id, icon: Icon, label, shortcut }) => (
           <button
             key={id}
-            title={label}
+            title={shortcut ? `${label} (${shortcut})` : label}
             onClick={() => onSelect(id)}
             style={{ width: `${itemSize}px`, height: `${itemSize}px` }}
             className={`flex items-center justify-center rounded transition-colors ${
