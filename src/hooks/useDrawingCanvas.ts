@@ -589,6 +589,37 @@ export function useDrawingCanvas({
     onColorPick?.(rgbToHsl(pixel[0], pixel[1], pixel[2]));
   }
 
+  // ── Filters ────────────────────────────────────────────────────────────────
+  function applyFilterToActiveLayer(filterStr: string) {
+    const store = getActiveStore();
+    if (!store || !activeLayerId) return;
+    
+    const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
+    if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
+
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!ctx || !layerCanvas) return;
+
+    pushHistory();
+
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = layerCanvas.width;
+    tempCanvas.height = layerCanvas.height;
+    const tempCtx = tempCanvas.getContext("2d");
+    if (!tempCtx) return;
+
+    tempCtx.drawImage(layerCanvas, 0, 0);
+
+    ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
+    ctx.filter = filterStr;
+    ctx.drawImage(tempCanvas, 0, 0);
+    ctx.filter = "none"; // reset
+
+    recomposite();
+    persistActiveLayerContent();
+  }
+
   // ── Drawing stroke ─────────────────────────────────────────────────────────
   function drawStrokeSegment(
     from: { x: number; y: number; pressure: number },
@@ -1049,6 +1080,9 @@ export function useDrawingCanvas({
 
     // Selection tools (rect & lasso)
     selectionTool,
+
+    // Filters
+    applyFilterToActiveLayer,
 
     // Animation timeline
     timeline,

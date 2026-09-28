@@ -1,6 +1,6 @@
 // ─── Hook: Selection Tool (Rect & Lasso) ────────────────────────────────────
 // Mengelola state selection rectangle / lasso, marching ants animation,
-// dan operasi Cut / Copy / Fill / Clear pada area terpilih.
+// dan operasi Cut / Copy / Fill / Clear / Move pada area terpilih.
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TabStore, LayerMeta } from "../types/drawing";
@@ -22,6 +22,26 @@ export interface LassoSelection {
 
 export type Selection = RectSelection | LassoSelection;
 
+export interface MoveState {
+  active: boolean;
+  /** Canvas berisi piksel yang sedang dipindah */
+  floatingCanvas: HTMLCanvasElement | null;
+  /** Offset awal dari bounding-box selection (document coords) */
+  originX: number;
+  originY: number;
+  /** Posisi saat ini (document coords) */
+  currentX: number;
+  currentY: number;
+  /** Apakah sedang di-drag */
+  dragging: boolean;
+  /** Posisi pointer saat drag dimulai */
+  dragStartDocX: number;
+  dragStartDocY: number;
+  /** Posisi origin saat drag dimulai */
+  dragOriginX: number;
+  dragOriginY: number;
+}
+
 export interface SelectionState {
   active: boolean;           // ada selection yang committed (selesai dibuat)
   drawing: boolean;          // sedang drag membuat selection baru
@@ -31,7 +51,23 @@ export interface SelectionState {
   // Untuk rect sementara saat drag
   dragStart: { x: number; y: number } | null;
   dragCurrent: { x: number; y: number } | null;
+  // Move state
+  move: MoveState;
 }
+
+const EMPTY_MOVE: MoveState = {
+  active: false,
+  floatingCanvas: null,
+  originX: 0,
+  originY: 0,
+  currentX: 0,
+  currentY: 0,
+  dragging: false,
+  dragStartDocX: 0,
+  dragStartDocY: 0,
+  dragOriginX: 0,
+  dragOriginY: 0,
+};
 
 interface UseSelectionToolParams {
   tool: string;
@@ -61,6 +97,7 @@ export function useSelectionTool({
     lassoPoints: [],
     dragStart: null,
     dragCurrent: null,
+    move: { ...EMPTY_MOVE },
   });
 
   // Marching ants offset (animasi)
@@ -90,6 +127,10 @@ export function useSelectionTool({
     if (tool !== "rect" && tool !== "lasso") {
       setSelState((prev) => {
         if (!prev.active && !prev.drawing && !prev.selection) return prev;
+        // Jika sedang move, commit dulu
+        if (prev.move.active && prev.move.floatingCanvas) {
+          commitMoveInternal(prev);
+        }
         return {
           active: false,
           drawing: false,
@@ -97,9 +138,11 @@ export function useSelectionTool({
           lassoPoints: [],
           dragStart: null,
           dragCurrent: null,
+          move: { ...EMPTY_MOVE },
         };
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
 
@@ -109,14 +152,32 @@ export function useSelectionTool({
     (docX: number, docY: number) => {
       if (tool !== "rect" && tool !== "lasso") return;
 
-      // Klik baru memulai selection → clear selection lama
-      setSelState({
-        active: false,
-        drawing: true,
-        selection: null,
-        lassoPoints: tool === "lasso" ? [{ x: docX, y: docY }] : [],
-        dragStart: { x: docX, y: docY },
-        dragCurrent: { x: docX, y: docY },
+      setSelState((prev) => {
+        // Jika sedang dalam mode move, mulai drag
+        if (prev.move.active) {
+          return {
+            ...prev,
+            move: {
+              ...prev.move,
+              dragging: true,
+              dragStartDocX: docX,
+              dragStartDocY: docY,
+              dragOriginX: prev.move.currentX,
+              dragOriginY: prev.move.currentY,
+            },
+          };
+        }
+
+        // Klik baru memulai selection → clear selection lama
+        return {
+          active: false,
+          drawing: true,
+          selection: null,
+          lassoPoints: tool === "lasso" ? [{ x: docX, y: docY }] : [],
+          dragStart: { x: docX, y: docY },
+          dragCurrent: { x: docX, y: docY },
+          move: { ...EMPTY_MOVE },
+        };
       });
     },
     [tool],
@@ -127,6 +188,20 @@ export function useSelectionTool({
       if (tool !== "rect" && tool !== "lasso") return;
 
       setSelState((prev) => {
+        // Jika sedang drag move
+        if (prev.move.active && prev.move.dragging) {
+          const dx = docX - prev.move.dragStartDocX;
+          const dy = docY - prev.move.dragStartDocY;
+          return {
+            ...prev,
+            move: {
+              ...prev.move,
+              currentX: prev.move.dragOriginX + dx,
+              currentY: prev.move.dragOriginY + dy,
+            },
+          };
+        }
+
         if (!prev.drawing) return prev;
         if (tool === "rect") {
           return { ...prev, dragCurrent: { x: docX, y: docY } };
@@ -154,6 +229,21 @@ export function useSelectionTool({
       if (tool !== "rect" && tool !== "lasso") return;
 
       setSelState((prev) => {
+        // Jika sedang drag move, selesaikan drag
+        if (prev.move.active && prev.move.dragging) {
+          const dx = docX - prev.move.dragStartDocX;
+          const dy = docY - prev.move.dragStartDocY;
+          return {
+            ...prev,
+            move: {
+              ...prev.move,
+              dragging: false,
+              currentX: prev.move.dragOriginX + dx,
+              currentY: prev.move.dragOriginY + dy,
+            },
+          };
+        }
+
         if (!prev.drawing) return prev;
 
         if (tool === "rect") {
@@ -174,6 +264,7 @@ export function useSelectionTool({
               lassoPoints: [],
               dragStart: null,
               dragCurrent: null,
+              move: { ...EMPTY_MOVE },
             };
           }
 
@@ -184,6 +275,7 @@ export function useSelectionTool({
             lassoPoints: [],
             dragStart: null,
             dragCurrent: { x: docX, y: docY },
+            move: { ...EMPTY_MOVE },
           };
         } else {
           // Lasso: tutup path
@@ -196,6 +288,7 @@ export function useSelectionTool({
               lassoPoints: [],
               dragStart: null,
               dragCurrent: null,
+              move: { ...EMPTY_MOVE },
             };
           }
 
@@ -206,6 +299,7 @@ export function useSelectionTool({
             lassoPoints: pts,
             dragStart: null,
             dragCurrent: { x: docX, y: docY },
+            move: { ...EMPTY_MOVE },
           };
         }
       });
@@ -224,18 +318,48 @@ export function useSelectionTool({
     ctx.clip();
   }
 
+  // ── Internal: commit move (gambar floating canvas ke layer) ────────────────
+  function commitMoveInternal(state: SelectionState) {
+    if (!state.move.active || !state.move.floatingCanvas) return;
+    
+    const store = getActiveStore();
+    if (!store || !activeLayerId) return;
+    
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!ctx || !layerCanvas) return;
+    
+    // Gambar floating canvas ke posisi baru
+    ctx.drawImage(
+      state.move.floatingCanvas,
+      Math.round(state.move.currentX),
+      Math.round(state.move.currentY),
+    );
+    
+    recomposite();
+    persistActiveLayerContent();
+  }
+
   // ── Operasi ─────────────────────────────────────────────────────────────────
 
   const clearSelection = useCallback(() => {
-    setSelState({
-      active: false,
-      drawing: false,
-      selection: null,
-      lassoPoints: [],
-      dragStart: null,
-      dragCurrent: null,
+    setSelState((prev) => {
+      // Jika sedang move, commit dulu
+      if (prev.move.active && prev.move.floatingCanvas) {
+        commitMoveInternal(prev);
+      }
+      return {
+        active: false,
+        drawing: false,
+        selection: null,
+        lassoPoints: [],
+        dragStart: null,
+        dragCurrent: null,
+        move: { ...EMPTY_MOVE },
+      };
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getActiveStore, activeLayerId, recomposite, persistActiveLayerContent]);
 
   const fillSelection = useCallback(() => {
     const store = getActiveStore();
@@ -399,16 +523,190 @@ export function useSelectionTool({
     [getActiveStore, selState.selection, eraseSelection],
   );
 
-  // Keyboard shortcut: Escape → clear selection
+  // ── Move Selection ────────────────────────────────────────────────────────
+  const startMoveSelection = useCallback(() => {
+    const store = getActiveStore();
+    if (!store || !activeLayerId || !selState.selection) return;
+
+    const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
+    if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
+
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!ctx || !layerCanvas) return;
+
+    pushHistory();
+
+    let floatingCanvas: HTMLCanvasElement;
+    let originX: number;
+    let originY: number;
+
+    if (selState.selection.mode === "rect") {
+      const { x, y, w, h } = selState.selection;
+      originX = Math.round(x);
+      originY = Math.round(y);
+      const fw = Math.max(1, Math.round(w));
+      const fh = Math.max(1, Math.round(h));
+
+      floatingCanvas = document.createElement("canvas");
+      floatingCanvas.width = fw;
+      floatingCanvas.height = fh;
+      const fCtx = floatingCanvas.getContext("2d");
+      if (!fCtx) return;
+
+      // Ambil piksel dari layer aktif saja
+      fCtx.drawImage(layerCanvas, originX, originY, fw, fh, 0, 0, fw, fh);
+
+      // Hapus area asli dari layer
+      ctx.clearRect(originX, originY, fw, fh);
+    } else {
+      // Lasso
+      const { points } = selState.selection;
+      const xs = points.map((p) => p.x);
+      const ys = points.map((p) => p.y);
+      const minX = Math.floor(Math.min(...xs));
+      const minY = Math.floor(Math.min(...ys));
+      const maxX = Math.ceil(Math.max(...xs));
+      const maxY = Math.ceil(Math.max(...ys));
+      const fw = Math.max(1, maxX - minX);
+      const fh = Math.max(1, maxY - minY);
+      originX = minX;
+      originY = minY;
+
+      floatingCanvas = document.createElement("canvas");
+      floatingCanvas.width = fw;
+      floatingCanvas.height = fh;
+      const fCtx = floatingCanvas.getContext("2d");
+      if (!fCtx) return;
+
+      // Clip lasso path, lalu ambil piksel
+      fCtx.save();
+      fCtx.translate(-minX, -minY);
+      applyLassoClip(fCtx, points);
+      fCtx.drawImage(layerCanvas, 0, 0);
+      fCtx.restore();
+
+      // Hapus area asli dari layer
+      ctx.save();
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = "rgba(0,0,0,1)";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    recomposite();
+
+    setSelState((prev) => ({
+      ...prev,
+      move: {
+        active: true,
+        floatingCanvas,
+        originX,
+        originY,
+        currentX: originX,
+        currentY: originY,
+        dragging: false,
+        dragStartDocX: 0,
+        dragStartDocY: 0,
+        dragOriginX: originX,
+        dragOriginY: originY,
+      },
+    }));
+  }, [
+    getActiveStore,
+    activeLayerId,
+    layers,
+    selState.selection,
+    pushHistory,
+    recomposite,
+  ]);
+
+  /** Commit move: stamp floating canvas ke layer dan tutup mode move */
+  const commitMove = useCallback(() => {
+    setSelState((prev) => {
+      if (!prev.move.active || !prev.move.floatingCanvas) return prev;
+
+      const store = getActiveStore();
+      if (!store || !activeLayerId) return prev;
+
+      const layerCanvas = store.layerCanvases.get(activeLayerId);
+      const ctx = layerCanvas?.getContext("2d");
+      if (!ctx || !layerCanvas) return prev;
+
+      ctx.drawImage(
+        prev.move.floatingCanvas,
+        Math.round(prev.move.currentX),
+        Math.round(prev.move.currentY),
+      );
+
+      recomposite();
+      persistActiveLayerContent();
+
+      return {
+        active: false,
+        drawing: false,
+        selection: null,
+        lassoPoints: [],
+        dragStart: null,
+        dragCurrent: null,
+        move: { ...EMPTY_MOVE },
+      };
+    });
+  }, [getActiveStore, activeLayerId, recomposite, persistActiveLayerContent]);
+
+  // Keyboard shortcut: Escape → clear selection / cancel move, Enter → commit move
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && selState.active) {
-        clearSelection();
+      if (e.key === "Escape") {
+        if (selState.move.active) {
+          // Cancel move: revert floating ke posisi asli lalu commit
+          setSelState((prev) => {
+            if (!prev.move.active || !prev.move.floatingCanvas) return prev;
+
+            const store = getActiveStore();
+            if (!store || !activeLayerId) return prev;
+
+            const layerCanvas = store.layerCanvases.get(activeLayerId);
+            const ctx = layerCanvas?.getContext("2d");
+            if (!ctx) return prev;
+
+            // Letakkan kembali ke posisi asli
+            ctx.drawImage(
+              prev.move.floatingCanvas,
+              Math.round(prev.move.originX),
+              Math.round(prev.move.originY),
+            );
+
+            recomposite();
+            persistActiveLayerContent();
+
+            return {
+              active: false,
+              drawing: false,
+              selection: null,
+              lassoPoints: [],
+              dragStart: null,
+              dragCurrent: null,
+              move: { ...EMPTY_MOVE },
+            };
+          });
+        } else if (selState.active) {
+          clearSelection();
+        }
+      } else if (e.key === "Enter" && selState.move.active) {
+        commitMove();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selState.active, clearSelection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selState.active, selState.move.active, clearSelection, commitMove]);
 
   return {
     selState,
@@ -420,5 +718,7 @@ export function useSelectionTool({
     fillSelection,
     eraseSelection,
     copySelection,
+    startMoveSelection,
+    commitMove,
   };
 }

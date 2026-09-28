@@ -36,6 +36,7 @@ import { AIAssistantPanel } from "../AI/AIAssistantPanel";
 import type { WorkspaceToolSetters } from "../../utils/aiToolBridge";
 import { hsvToRgbString } from "../../utils/canvasUtils";
 import { SaveDialog } from "./SaveDialog";
+import { ReferenceWindow } from "./ReferenceWindow";
 
 
 
@@ -264,6 +265,7 @@ export default function DrawingWorkspace({
 
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showReferenceWindow, setShowReferenceWindow] = useState(false);
   const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
   const openFileInputRef = useRef<HTMLInputElement | null>(null);
   const dwpFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -602,6 +604,20 @@ export default function DrawingWorkspace({
     ],
   };
 
+  const effectsMenu: MenuDef = {
+    label: "Effects",
+    items: [
+      { type: "action", label: "Blur (Soft)", onClick: () => drawing.applyFilterToActiveLayer("blur(4px)") },
+      { type: "action", label: "Blur (Strong)", onClick: () => drawing.applyFilterToActiveLayer("blur(12px)") },
+      { type: "action", label: "Grayscale", onClick: () => drawing.applyFilterToActiveLayer("grayscale(100%)") },
+      { type: "action", label: "Invert", onClick: () => drawing.applyFilterToActiveLayer("invert(100%)") },
+      { type: "action", label: "Sepia", onClick: () => drawing.applyFilterToActiveLayer("sepia(100%)") },
+      { type: "action", label: "Brighten", onClick: () => drawing.applyFilterToActiveLayer("brightness(150%)") },
+      { type: "action", label: "Darken", onClick: () => drawing.applyFilterToActiveLayer("brightness(50%)") },
+      { type: "action", label: "High Contrast", onClick: () => drawing.applyFilterToActiveLayer("contrast(200%)") },
+    ],
+  };
+
   const workspaceMenu: MenuDef = {
     label: "Workspace",
     items: [
@@ -618,7 +634,7 @@ export default function DrawingWorkspace({
         checked: isPanelVisible("brushSettings"),
         onToggle: () => togglePanelVisibility("brushSettings"),
       },
-      { type: "checkbox", label: "Hue", checked: isPanelVisible("hue"), onToggle: () => togglePanelVisibility("hue") },
+      { type: "checkbox", label: "Color", checked: isPanelVisible("hue"), onToggle: () => togglePanelVisibility("hue") },
       {
         type: "checkbox",
         label: "Layers",
@@ -630,6 +646,12 @@ export default function DrawingWorkspace({
         label: "Timeline Animasi",
         checked: isPanelVisible("timeline"),
         onToggle: () => togglePanelVisibility("timeline"),
+      },
+      {
+        type: "checkbox",
+        label: "Jendela Referensi",
+        checked: showReferenceWindow,
+        onToggle: () => setShowReferenceWindow((p) => !p),
       },
     ],
   };
@@ -763,6 +785,8 @@ export default function DrawingWorkspace({
             onSelectionCopy={() => drawing.selectionTool.copySelection(false)}
             onSelectionFill={drawing.selectionTool.fillSelection}
             onSelectionClear={drawing.selectionTool.clearSelection}
+            onSelectionMove={drawing.selectionTool.startMoveSelection}
+            onSelectionCommitMove={drawing.selectionTool.commitMove}
           />
         </div>
 
@@ -925,6 +949,11 @@ export default function DrawingWorkspace({
           onSaveProject={() => drawing.saveProject()}
           projectTitle={activeTab?.title ?? "project"}
         />
+
+        <ReferenceWindow 
+          isOpen={showReferenceWindow}
+          onClose={() => setShowReferenceWindow(false)}
+        />
       </div>
     );
   }
@@ -937,7 +966,7 @@ export default function DrawingWorkspace({
       {/* Top bar */}
       <div className="relative z-30 h-12 shrink-0 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-3">
         <div className="flex items-center gap-3">
-          <MenuBar menus={[fileMenu, editMenu, workspaceMenu]} />
+          <MenuBar menus={[fileMenu, editMenu, effectsMenu, workspaceMenu]} />
           <div className="flex items-center gap-0.5 bg-neutral-800/80 rounded-lg p-0.5 border border-neutral-700/60">
             <button
               onClick={() => drawing.undo()}
@@ -1091,6 +1120,8 @@ export default function DrawingWorkspace({
               onSelectionCopy={() => drawing.selectionTool.copySelection(false)}
               onSelectionFill={drawing.selectionTool.fillSelection}
               onSelectionClear={drawing.selectionTool.clearSelection}
+              onSelectionMove={drawing.selectionTool.startMoveSelection}
+              onSelectionCommitMove={drawing.selectionTool.commitMove}
             />
           </div>
 
@@ -1155,6 +1186,11 @@ export default function DrawingWorkspace({
         onSavePng={() => drawing.exportImage()}
         onSaveProject={() => drawing.saveProject()}
         projectTitle={activeTab?.title ?? "project"}
+      />
+
+      <ReferenceWindow 
+        isOpen={showReferenceWindow}
+        onClose={() => setShowReferenceWindow(false)}
       />
     </div>
   );

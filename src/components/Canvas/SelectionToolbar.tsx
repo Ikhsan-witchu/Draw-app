@@ -1,7 +1,7 @@
 // ─── SelectionToolbar: Toolbar floating di pojok selection ──────────────────
-// Menampilkan tombol Cut, Copy, Fill, Clear di dekat pojok kanan-bawah selection.
+// Menampilkan tombol Cut, Copy, Fill, Move, Clear di dekat pojok kanan-bawah selection.
 
-import { Scissors, Copy, PaintBucket, X } from "lucide-react";
+import { Scissors, Copy, PaintBucket, X, Move, Check } from "lucide-react";
 import type { SelectionState } from "../../hooks/useSelectionTool";
 
 interface SelectionToolbarProps {
@@ -16,6 +16,8 @@ interface SelectionToolbarProps {
   onCopy: () => void;
   onFill: () => void;
   onClear: () => void;
+  onMove: () => void;
+  onCommitMove: () => void;
 }
 
 export function SelectionToolbar({
@@ -30,14 +32,22 @@ export function SelectionToolbar({
   onCopy,
   onFill,
   onClear,
+  onMove,
+  onCommitMove,
 }: SelectionToolbarProps) {
   if (!selState.active || !selState.selection) return null;
+
+  const isMoving = selState.move.active;
 
   // Hitung pojok kanan-bawah selection
   let anchorDocX: number;
   let anchorDocY: number;
 
-  if (selState.selection.mode === "rect") {
+  if (isMoving && selState.move.floatingCanvas) {
+    // Saat move, posisikan berdasarkan posisi floating
+    anchorDocX = selState.move.currentX + selState.move.floatingCanvas.width;
+    anchorDocY = selState.move.currentY + selState.move.floatingCanvas.height;
+  } else if (selState.selection.mode === "rect") {
     const { x, y, w, h } = selState.selection;
     anchorDocX = x + w;
     anchorDocY = y + h;
@@ -68,28 +78,55 @@ export function SelectionToolbar({
       onPointerDown={(e) => e.stopPropagation()}
       onPointerUp={(e) => e.stopPropagation()}
     >
-      <button className={btnClass} title="Potong (Cut)" onClick={onCut}>
-        <Scissors size={12} className="text-rose-400" />
-        <span>Cut</span>
-      </button>
-      <div className="w-px h-4 bg-neutral-700" />
-      <button className={btnClass} title="Salin (Copy)" onClick={onCopy}>
-        <Copy size={12} className="text-sky-400" />
-        <span>Copy</span>
-      </button>
-      <div className="w-px h-4 bg-neutral-700" />
-      <button className={btnClass} title="Isi warna" onClick={onFill}>
-        <PaintBucket size={12} className="text-amber-400" />
-        <span>Fill</span>
-      </button>
-      <div className="w-px h-4 bg-neutral-700" />
-      <button
-        className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors active:scale-95"
-        title="Batalkan seleksi (Esc)"
-        onClick={onClear}
-      >
-        <X size={13} />
-      </button>
+      {isMoving ? (
+        <>
+          {/* Mode Move: tampilkan Commit dan Cancel */}
+          <button className={btnClass} title="Letakkan di sini (Enter)" onClick={onCommitMove}>
+            <Check size={12} className="text-emerald-400" />
+            <span>Letakkan</span>
+          </button>
+          <div className="w-px h-4 bg-neutral-700" />
+          <button
+            className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors active:scale-95"
+            title="Batalkan (Esc → kembali ke posisi asli)"
+            onClick={onClear}
+          >
+            <X size={13} />
+          </button>
+          <div className="mx-1 text-[9px] text-neutral-500">Geser area</div>
+        </>
+      ) : (
+        <>
+          {/* Mode Selection normal */}
+          <button className={btnClass} title="Pindahkan (Move)" onClick={onMove}>
+            <Move size={12} className="text-violet-400" />
+            <span>Move</span>
+          </button>
+          <div className="w-px h-4 bg-neutral-700" />
+          <button className={btnClass} title="Potong (Cut)" onClick={onCut}>
+            <Scissors size={12} className="text-rose-400" />
+            <span>Cut</span>
+          </button>
+          <div className="w-px h-4 bg-neutral-700" />
+          <button className={btnClass} title="Salin (Copy)" onClick={onCopy}>
+            <Copy size={12} className="text-sky-400" />
+            <span>Copy</span>
+          </button>
+          <div className="w-px h-4 bg-neutral-700" />
+          <button className={btnClass} title="Isi warna" onClick={onFill}>
+            <PaintBucket size={12} className="text-amber-400" />
+            <span>Fill</span>
+          </button>
+          <div className="w-px h-4 bg-neutral-700" />
+          <button
+            className="p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors active:scale-95"
+            title="Batalkan seleksi (Esc)"
+            onClick={onClear}
+          >
+            <X size={13} />
+          </button>
+        </>
+      )}
     </div>
   );
 }

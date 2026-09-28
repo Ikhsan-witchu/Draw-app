@@ -62,6 +62,8 @@ interface DrawingCanvasProps {
   onSelectionCopy?: () => void;
   onSelectionFill?: () => void;
   onSelectionClear?: () => void;
+  onSelectionMove?: () => void;
+  onSelectionCommitMove?: () => void;
 }
 
 export default function DrawingCanvas({
@@ -109,6 +111,8 @@ export default function DrawingCanvas({
   onSelectionCopy,
   onSelectionFill,
   onSelectionClear,
+  onSelectionMove,
+  onSelectionCommitMove,
 }: DrawingCanvasProps) {
 
   const isRotated = Math.round(rotation) !== 0 && Math.round(rotation) !== 360;
@@ -317,6 +321,8 @@ export default function DrawingCanvas({
             onCopy={onSelectionCopy ?? (() => {})}
             onFill={onSelectionFill ?? (() => {})}
             onClear={onSelectionClear ?? (() => {})}
+            onMove={onSelectionMove ?? (() => {})}
+            onCommitMove={onSelectionCommitMove ?? (() => {})}
           />
         )}
 
