@@ -43,8 +43,8 @@ interface UseCanvasGesturesParams {
   onTextClick?: (docX: number, docY: number) => void;
   // Selection tools
   onSelectionPointerDown?: (docX: number, docY: number) => void;
-  onSelectionPointerMove?: (docX: number, docY: number) => void;
-  onSelectionPointerUp?: (docX: number, docY: number) => void;
+  onSelectionPointerMove?: (docX: number, docY: number, isCtrlKey?: boolean) => void;
+  onSelectionPointerUp?: (docX: number, docY: number, isCtrlKey?: boolean) => void;
 }
 
 
@@ -346,15 +346,32 @@ export function useCanvasGestures({
     // Drawing shape preview
     if (!ignoreUntilAllUp.current && isDrawingShape.current && shapeStartPoint.current && activePointers.current.size === 1) {
       const pt = docPointFromClient(e.clientX, e.clientY);
-      lastPoint.current = { x: pt.x, y: pt.y, pressure: 0.5 };
-      onShapePreview?.(shapeStartPoint.current, pt);
+      let adjustedPt = { x: pt.x, y: pt.y };
+      
+      // Jika Ctrl ditekan, paksa menjadi bentuk sempurna (persegi/lingkaran)
+      if (e.ctrlKey) {
+        const dx = pt.x - shapeStartPoint.current.x;
+        const dy = pt.y - shapeStartPoint.current.y;
+        const size = Math.max(Math.abs(dx), Math.abs(dy));
+        adjustedPt.x = shapeStartPoint.current.x + Math.sign(dx) * size;
+        adjustedPt.y = shapeStartPoint.current.y + Math.sign(dy) * size;
+      }
+
+      lastPoint.current = { x: adjustedPt.x, y: adjustedPt.y, pressure: 0.5 };
+      onShapePreview?.(shapeStartPoint.current, adjustedPt);
       return;
     }
 
     // Selection tool drag (rect & lasso)
     if (!ignoreUntilAllUp.current && (tool === "rect" || tool === "lasso") && activePointers.current.size === 1) {
-      const pt = docPointFromClient(e.clientX, e.clientY);
-      onSelectionPointerMove?.(pt.x, pt.y);
+      let pt = docPointFromClient(e.clientX, e.clientY);
+      
+      // Khusus untuk rect selection, jika Ctrl ditekan, buat persegi sempurna
+      // Kita perlu tahu start point-nya, tapi di useCanvasGestures kita tidak simpan state start point selection.
+      // Kita bisa mengakalinya dengan passing (pt, e) ke onSelectionPointerMove, tapi lebih mudah dicek di useSelectionTool.ts.
+      // Jadi kita kirim tambahan parameter isCtrlKey ke onSelectionPointerMove jika memungkinkan.
+      // Atur pt.x pt.y sesuai ctrl, eh wait, onSelectionPointerMove tidak punya startPoint.
+      onSelectionPointerMove?.(pt.x, pt.y, e.ctrlKey);
       return;
     }
 
@@ -397,13 +414,26 @@ export function useCanvasGestures({
       // Selection tool pointer up → commit selection
       if (tool === "rect" || tool === "lasso") {
         const pt = docPointFromClient(e.clientX, e.clientY);
-        onSelectionPointerUp?.(pt.x, pt.y);
+        onSelectionPointerUp?.(pt.x, pt.y, e.ctrlKey);
         ignoreUntilAllUp.current = false;
         return;
       }
 
       if (isDrawingShape.current && shapeStartPoint.current) {
-        const finalPt = lastPoint.current ? { x: lastPoint.current.x, y: lastPoint.current.y } : shapeStartPoint.current;
+        let finalPt = lastPoint.current ? { x: lastPoint.current.x, y: lastPoint.current.y } : shapeStartPoint.current;
+        
+        // Cek lagi saat dilepas, barangkali user menahan Ctrl
+        if (e.ctrlKey) {
+          const pt = docPointFromClient(e.clientX, e.clientY);
+          const dx = pt.x - shapeStartPoint.current.x;
+          const dy = pt.y - shapeStartPoint.current.y;
+          const size = Math.max(Math.abs(dx), Math.abs(dy));
+          finalPt = {
+            x: shapeStartPoint.current.x + Math.sign(dx) * size,
+            y: shapeStartPoint.current.y + Math.sign(dy) * size,
+          };
+        }
+
         pushHistory();
         onShapeCommit?.(shapeStartPoint.current, finalPt);
         isDrawingShape.current = false;

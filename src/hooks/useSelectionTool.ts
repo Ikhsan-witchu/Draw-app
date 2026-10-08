@@ -184,7 +184,7 @@ export function useSelectionTool({
   );
 
   const handleSelectionPointerMove = useCallback(
-    (docX: number, docY: number) => {
+    (docX: number, docY: number, isCtrlKey?: boolean) => {
       if (tool !== "rect" && tool !== "lasso") return;
 
       setSelState((prev) => {
@@ -204,7 +204,15 @@ export function useSelectionTool({
 
         if (!prev.drawing) return prev;
         if (tool === "rect") {
-          return { ...prev, dragCurrent: { x: docX, y: docY } };
+          let adjustedPt = { x: docX, y: docY };
+          if (isCtrlKey && prev.dragStart) {
+            const dx = docX - prev.dragStart.x;
+            const dy = docY - prev.dragStart.y;
+            const size = Math.max(Math.abs(dx), Math.abs(dy));
+            adjustedPt.x = prev.dragStart.x + Math.sign(dx) * size;
+            adjustedPt.y = prev.dragStart.y + Math.sign(dy) * size;
+          }
+          return { ...prev, dragCurrent: adjustedPt };
         } else {
           // Lasso: tambah titik hanya jika pindah > 2px dari titik terakhir
           const last = prev.lassoPoints[prev.lassoPoints.length - 1];
@@ -225,7 +233,7 @@ export function useSelectionTool({
   );
 
   const handleSelectionPointerUp = useCallback(
-    (docX: number, docY: number) => {
+    (docX: number, docY: number, isCtrlKey?: boolean) => {
       if (tool !== "rect" && tool !== "lasso") return;
 
       setSelState((prev) => {
@@ -250,10 +258,20 @@ export function useSelectionTool({
           const start = prev.dragStart;
           if (!start) return { ...prev, drawing: false };
 
-          const x = Math.min(start.x, docX);
-          const y = Math.min(start.y, docY);
-          const w = Math.abs(docX - start.x);
-          const h = Math.abs(docY - start.y);
+          let finalX = docX;
+          let finalY = docY;
+          if (isCtrlKey) {
+            const dx = docX - start.x;
+            const dy = docY - start.y;
+            const size = Math.max(Math.abs(dx), Math.abs(dy));
+            finalX = start.x + Math.sign(dx) * size;
+            finalY = start.y + Math.sign(dy) * size;
+          }
+
+          const x = Math.min(start.x, finalX);
+          const y = Math.min(start.y, finalY);
+          const w = Math.abs(finalX - start.x);
+          const h = Math.abs(finalY - start.y);
 
           if (w < 2 && h < 2) {
             // Terlalu kecil → batalkan
