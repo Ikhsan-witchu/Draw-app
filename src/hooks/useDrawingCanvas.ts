@@ -568,7 +568,17 @@ export function useDrawingCanvas({
     pushHistory();
 
     const imageData = ctx.getImageData(0, 0, layerCanvas.width, layerCanvas.height);
-    const [r, g, b] = hslStringToRgb(color);
+    let r = 0, g = 0, b = 0;
+    if (color.startsWith("rgb")) {
+      const match = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/);
+      if (match) {
+        r = parseInt(match[1], 10);
+        g = parseInt(match[2], 10);
+        b = parseInt(match[3], 10);
+      }
+    } else {
+      [r, g, b] = hslStringToRgb(color);
+    }
     floodFill(imageData, px, py, [r, g, b, 255], 24);
     ctx.putImageData(imageData, 0, 0);
     recomposite();
