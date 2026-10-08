@@ -89,6 +89,8 @@ export function useHistory({
       store.redoHistory.set(activeLayerId, redoStack);
 
       scratchCanvasRef.current = null;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
       ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
       ctx.drawImage(snapshot, 0, 0);
       recomposite();
@@ -121,6 +123,8 @@ export function useHistory({
       store.history.set(activeLayerId, undoStack);
 
       scratchCanvasRef.current = null;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
       ctx.clearRect(0, 0, layerCanvas.width, layerCanvas.height);
       ctx.drawImage(snapshot, 0, 0);
       recomposite();
