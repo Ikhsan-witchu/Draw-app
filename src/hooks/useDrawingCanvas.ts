@@ -600,6 +600,60 @@ export function useDrawingCanvas({
   }
 
   // ── Filters ────────────────────────────────────────────────────────────────
+  // 🎨 Outline Tool
+  function applyOutlineToActiveLayer(outlineColor: string, thickness: number) {
+    const store = getActiveStore();
+    if (!store || !activeLayerId) return;
+    
+    const activeLayerMeta = layers.find((l) => l.id === activeLayerId);
+    if (activeLayerMeta?.locked || !activeLayerMeta?.visible) return;
+
+    const layerCanvas = store.layerCanvases.get(activeLayerId);
+    const ctx = layerCanvas?.getContext("2d");
+    if (!ctx || !layerCanvas) return;
+
+    pushHistory();
+
+    const w = layerCanvas.width;
+    const h = layerCanvas.height;
+
+    const silhouetteCanvas = document.createElement("canvas");
+    silhouetteCanvas.width = w;
+    silhouetteCanvas.height = h;
+    const silCtx = silhouetteCanvas.getContext("2d");
+    if (!silCtx) return;
+
+    silCtx.drawImage(layerCanvas, 0, 0);
+    silCtx.globalCompositeOperation = "source-in";
+    silCtx.fillStyle = outlineColor;
+    silCtx.fillRect(0, 0, w, h);
+
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = w;
+    outCanvas.height = h;
+    const outCtx = outCanvas.getContext("2d");
+    if (!outCtx) return;
+
+    const maxRadius = Math.min(50, Math.ceil(thickness));
+    const radSq = maxRadius * maxRadius;
+
+    for (let x = -maxRadius; x <= maxRadius; x++) {
+      for (let y = -maxRadius; y <= maxRadius; y++) {
+        if (x * x + y * y <= radSq) {
+          outCtx.drawImage(silhouetteCanvas, x, y);
+        }
+      }
+    }
+
+    outCtx.drawImage(layerCanvas, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(outCanvas, 0, 0);
+
+    recomposite();
+    persistActiveLayerContent();
+  }
+
   function applyFilterToActiveLayer(filterStr: string) {
     const store = getActiveStore();
     if (!store || !activeLayerId) return;
@@ -1092,6 +1146,7 @@ export function useDrawingCanvas({
     selectionTool,
 
     // Filters
+    applyOutlineToActiveLayer,
     applyFilterToActiveLayer,
 
     // Animation timeline

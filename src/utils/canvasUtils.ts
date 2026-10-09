@@ -100,6 +100,7 @@ export function floodFill(
   startY: number,
   fillColor: [number, number, number, number],
   tolerance: number,
+  expand: number = 1 // Default expand 1 pixel to hide anti-aliasing white gaps
 ): void {
   const { width, height, data } = imageData;
   const startIdx = (startY * width + startX) * 4;
@@ -154,6 +155,52 @@ export function floodFill(
       }
       if (y < height - 1 && !visited[(y + 1) * width + xi] && matches(((y + 1) * width + xi) * 4)) {
         stack.push((y + 1) * width + xi);
+      }
+    }
+  }
+
+  // Tahap Dilation (Grow) untuk menutupi celah anti-aliasing
+  if (expand > 0) {
+    const expanded = new Uint8Array(width * height);
+    // Salin status visited ke expanded (agar tidak saling mempengaruhi iterasi)
+    expanded.set(visited);
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x;
+        if (visited[p]) {
+          // Tandai tetangga
+          if (x > 0) expanded[p - 1] = 1;
+          if (x < width - 1) expanded[p + 1] = 1;
+          if (y > 0) expanded[p - width] = 1;
+          if (y < height - 1) expanded[p + width] = 1;
+        }
+      }
+    }
+
+    // Terapkan warna ke area yang terekspansi (opsional: composite under, tapi replace lebih stabil)
+    for (let i = 0; i < width * height; i++) {
+      if (expanded[i] && !visited[i]) {
+        const idx = i * 4;
+        // Gunakan teknik destination-over matematis agar garis luar (outline) tidak menjadi bergerigi (aliased).
+        // Ini memastikan warna fill ditaruh 'di bawah' piksel semi-transparan dari anti-aliasing garis.
+        const eR = data[idx];
+        const eG = data[idx + 1];
+        const eB = data[idx + 2];
+        const eA = data[idx + 3] / 255;
+
+        const fR = fillColor[0];
+        const fG = fillColor[1];
+        const fB = fillColor[2];
+        const fA = fillColor[3] / 255;
+
+        const outA = eA + fA * (1 - eA);
+        if (outA > 0) {
+          data[idx] = (eR * eA + fR * fA * (1 - eA)) / outA;
+          data[idx + 1] = (eG * eA + fG * fA * (1 - eA)) / outA;
+          data[idx + 2] = (eB * eA + fB * fA * (1 - eA)) / outA;
+          data[idx + 3] = outA * 255;
+        }
       }
     }
   }

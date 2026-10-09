@@ -615,6 +615,7 @@ export default function DrawingWorkspace({
       { type: "action", label: "Brighten", onClick: () => drawing.applyFilterToActiveLayer("brightness(150%)") },
       { type: "action", label: "Darken", onClick: () => drawing.applyFilterToActiveLayer("brightness(50%)") },
       { type: "action", label: "High Contrast", onClick: () => drawing.applyFilterToActiveLayer("contrast(200%)") },
+      { type: "action", label: "Add Outline", onClick: () => drawing.applyOutlineToActiveLayer(color, brushSize) },
     ],
   };
 
