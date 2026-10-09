@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Image as ImageIcon } from "lucide-react";
+import { X, Image as ImageIcon, Maximize } from "lucide-react";
 
 interface ReferenceWindowProps {
   isOpen: boolean;
@@ -11,11 +11,18 @@ export function ReferenceWindow({ isOpen, onClose }: ReferenceWindowProps) {
   const [size, setSize] = useState({ width: 300, height: 250 });
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   
+  // Image pan & zoom state
+  const [imgPan, setImgPan] = useState({ x: 0, y: 0 });
+  const [imgZoom, setImgZoom] = useState(1);
+  
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
   
   const isResizing = useRef(false);
   const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  
+  const isImagePanning = useRef(false);
+  const imagePanStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +59,7 @@ export function ReferenceWindow({ isOpen, onClose }: ReferenceWindowProps) {
 
   if (!isOpen) return null;
 
+  // Window drag
   const handleDragStart = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("button")) return;
     isDragging.current = true;
@@ -59,6 +67,7 @@ export function ReferenceWindow({ isOpen, onClose }: ReferenceWindowProps) {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
+  // Window resize
   const handleResizeStart = (e: React.PointerEvent) => {
     e.stopPropagation();
     isResizing.current = true;
@@ -66,12 +75,51 @@ export function ReferenceWindow({ isOpen, onClose }: ReferenceWindowProps) {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
+  // Image pan & zoom
+  const handleImagePointerDown = (e: React.PointerEvent) => {
+    if (!imageUrl) return;
+    e.stopPropagation();
+    isImagePanning.current = true;
+    imagePanStart.current = { x: e.clientX, y: e.clientY, px: imgPan.x, py: imgPan.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleImagePointerMove = (e: React.PointerEvent) => {
+    if (!isImagePanning.current) return;
+    e.stopPropagation();
+    setImgPan({
+      x: imagePanStart.current.px + (e.clientX - imagePanStart.current.x),
+      y: imagePanStart.current.py + (e.clientY - imagePanStart.current.y),
+    });
+  };
+
+  const handleImagePointerUp = (e: React.PointerEvent) => {
+    if (isImagePanning.current) {
+      isImagePanning.current = false;
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (!imageUrl) return;
+    e.stopPropagation();
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    setImgZoom((z) => Math.max(0.1, Math.min(10, z * zoomFactor)));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setImageUrl(url);
+      setImgPan({ x: 0, y: 0 });
+      setImgZoom(1);
     }
+  };
+
+  const resetZoomPan = () => {
+    setImgPan({ x: 0, y: 0 });
+    setImgZoom(1);
   };
 
   return (
@@ -99,12 +147,22 @@ export function ReferenceWindow({ isOpen, onClose }: ReferenceWindowProps) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 min-h-0 relative bg-neutral-950 flex items-center justify-center overflow-hidden">
+      <div 
+        className="flex-1 min-h-0 relative bg-neutral-950 flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing"
+        onPointerDown={handleImagePointerDown}
+        onPointerMove={handleImagePointerMove}
+        onPointerUp={handleImagePointerUp}
+        onWheel={handleWheel}
+      >
         {imageUrl ? (
           <img 
             src={imageUrl} 
             alt="Reference" 
-            className="w-full h-full object-contain pointer-events-none"
+            className="w-full h-full object-contain pointer-events-none select-none"
+            style={{
+              transform: `translate(${imgPan.x}px, ${imgPan.y}px) scale(${imgZoom})`,
+              transformOrigin: "center"
+            }}
           />
         ) : (
           <div className="text-center p-4">
@@ -121,13 +179,20 @@ export function ReferenceWindow({ isOpen, onClose }: ReferenceWindowProps) {
         
         {/* Floating actions when image loaded */}
         {imageUrl && (
-          <div className="absolute top-2 right-2 flex gap-1 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity">
+          <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => fileInputRef.current?.click()}
               className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded backdrop-blur-sm transition-colors"
               title="Ganti gambar"
             >
               <ImageIcon size={14} />
+            </button>
+            <button
+              onClick={resetZoomPan}
+              className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded backdrop-blur-sm transition-colors"
+              title="Reset Zoom & Pan"
+            >
+              <Maximize size={14} />
             </button>
           </div>
         )}

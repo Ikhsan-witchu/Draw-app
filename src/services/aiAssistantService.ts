@@ -104,10 +104,10 @@ export async function processAIChatRequest(messages: RequestMessage[]): Promise<
     );
   }
 
-  let modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-  // Sanitasi model: Gemini 1.5 dan 2.5 sudah tidak didukung di API v1beta
-  if (modelName.includes("1.5") || modelName.includes("2.5") || modelName === "1.5") {
-    modelName = "gemini-3.6-flash";
+  let modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  // Sanitasi model: fallback ke model dengan RPM tinggi dan versi terbaru (3.5 Flash Lite)
+  if (modelName.includes("1.5") || modelName.includes("2.5") || modelName.includes("3.6") || modelName === "1.5") {
+    modelName = "gemini-3.5-flash-lite";
   }
   const ai = new GoogleGenAI({ apiKey });
 
@@ -146,14 +146,42 @@ export async function processAIChatRequest(messages: RequestMessage[]): Promise<
     throw new Error("Pesan tidak boleh kosong.");
   }
 
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents,
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      tools: [{ functionDeclarations: [recommendToolDeclaration] }],
-    },
-  });
+  let response;
+  let retries = 3;
+  let delay = 2000;
+
+  while (retries > 0) {
+    try {
+      response = await ai.models.generateContent({
+        model: modelName,
+        contents,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          tools: [{ functionDeclarations: [recommendToolDeclaration] }],
+        },
+      });
+      break;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isRetryable = errorMessage.includes("503") || errorMessage.includes("429") || errorMessage.toLowerCase().includes("unavailable");
+      
+      if (isRetryable && retries > 1) {
+        retries--;
+        console.warn(`[AI Service] API Error (${errorMessage}). Mencoba lagi dalam ${delay / 1000} detik...`);
+        await new Promise((res) => setTimeout(res, delay));
+        delay *= 2; // Exponential backoff (2s, 4s, 8s)
+      } else {
+        throw new Error(
+          `Gagal menghubungi AI (Error: ${errorMessage}). Server Google sedang sibuk atau limit tercapai. Silakan coba beberapa saat lagi.`
+        );
+      }
+    }
+  }
+
+  // Jika entah bagaimana loop selesai tapi response masih undefined
+  if (!response) {
+    throw new Error("Gagal mendapatkan response dari AI setelah beberapa kali percobaan.");
+  }
 
   let reply = response.text || "";
   let recommendation: ToolRecommendation | undefined;

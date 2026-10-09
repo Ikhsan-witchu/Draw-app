@@ -180,6 +180,7 @@ export function useCanvasGestures({
   // ── Pointer Down ─────────────────────────────────────────────────────────
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
     activePointers.current.set(e.pointerId, {
       id: e.pointerId,
